@@ -25,6 +25,7 @@ Route::middleware(['auth:sanctum'])->get('/admin/user', function (Request $reque
 });
 
 Route::post('quote', [QuoteController::class, 'index']);
+Route::post('purchaseTravelInsured', [QuoteController::class, 'purchaseTravelInsured']);
 Route::get('states', [StateController::class, 'index']);
 Route::post('quote-travel-insured', [QuoteController::class, 'quoteTravelInsured']);
 Route::post('purchase-travel-insured', [QuoteController::class, 'purchaseTravelInsured']);
