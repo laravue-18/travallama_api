@@ -49,8 +49,8 @@ class QuoteController extends Controller
                     "ResidencyState" => $request['residenceState'],
                     "ResidencyCountry" => $request['residenceCountry'],
                     "TravelInfo" => [
-                        "StartDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
-                        "EndDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+                        "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                        "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
                         "Destinations" => [
                             "USA"
                           ]
@@ -62,7 +62,7 @@ class QuoteController extends Controller
                     "Families" => [[
                         "Insureds" => [[
                                 "DateOfBirth" => "08/31/1982",
-                                "TripCost" => $request['cost']
+                                "TripCost" => $request['tripCost']
                         ]]
                     ]],
                 ];
@@ -154,15 +154,15 @@ class QuoteController extends Controller
 
         $variablesArray = [
             "planQuoteRequest" => [
-                "departureDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
-                "returnDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+                "departureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                "returnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
                 "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
                 "stateIsoCode" => $request['residenceState'],
                 "countryIsoCode" => $request['residenceCountry'],
                 "destinations" => [[ "countryIsoCode" => $request['destination'] ]],
                 "primaryTraveler" => [
-                    "dateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
-                    "tripCost" => (float)$request['cost']
+                    "dateOfBirth" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
+                    "tripCost" => (float)$request['tripCost']
                 ],
                 "additionalTravelers" => [] 
             ]
@@ -180,8 +180,8 @@ class QuoteController extends Controller
         $trawick_products = [];
         $response = Http::asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
             "product" => 187,
-            "eff_date" => date_format(date_create($request['departureDate']), "m/d/Y"),
-            "term_date" => date_format(date_create($request['returnDate']), "m/d/Y"),
+            "eff_date" => date_format(date_create($request['startDate']), "m/d/Y"),
+            "term_date" => date_format(date_create($request['endDate']), "m/d/Y"),
             "country" => "US",
             "state" => "MN",
             "destination" => "US",
@@ -238,13 +238,13 @@ class QuoteController extends Controller
         $variablesArray = [
             "purchaseRequest" => [
                 "productCode" => $request['product']['productCode'],
-                "departureDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
-                "returnDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+                "departureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                "returnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
                 "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
                 "destinations" => [[ "countryIsoCode" => $request['destination']]],
                 "primaryTraveler" => [
-                    "dateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
-                    "tripCost" => (float)$request['cost'],
+                    "dateOfBirth" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
+                    "tripCost" => (float)$request['tripCost'],
                     "firstName" => $request['first_name'],
                     "lastName" => $request['last_name'],
                     "email" => $request['email'],
@@ -270,8 +270,8 @@ class QuoteController extends Controller
                     "amount" => (float)$request['product']['pricing']['premium'],
                     "creditCard" => [
                         "cardNumber" => $request['creditCard']['cardNumber'],
-                        "expirationMonth" => (int)$request['creditCard']['expirationMonth'],
-                        "expirationYear" => (int)$request['creditCard']['expirationYear'],
+                        "expirationMonth" => (int)date('m', strtotime($request['creditCard']['expiryDate'])),
+                        "expirationYear" => (int)date('Y', strtotime($request['creditCard']['expiryDate'])),
                         "cardVerificationValue" => $request['creditCard']['cardVerificationValue'],
                         "firstName" => $request['creditCard']['firstName'],
                         "middleName" => "Martin",
@@ -316,8 +316,8 @@ class QuoteController extends Controller
             "ResidencyState" => $request['residenceState'],
             "ResidencyCountry" => $request['residenceCountry'],
             "TravelInfo" => [
-                "StartDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
-                "EndDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+                "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
                 "Destinations" => [$request['destination']],
                 "InitialPaymentDate" => date_format(date_create($request['depositDate']), "m/d/Y")
             ],
@@ -330,8 +330,8 @@ class QuoteController extends Controller
                     "FirstName" => $request['first_name'],
                     "LastName" => $request['last_name'],
                     "Email" => $request['email'],
-                    "DateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
-                    "TripCost" => $request['cost']
+                    "DateOfBirth" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
+                    "TripCost" => $request['tripCost']
                 ]]
             ]],
             "Contacts" => [
@@ -382,13 +382,13 @@ class QuoteController extends Controller
     public function purchaseTrawick(Request $request){
         $payload = [
             "product" => 16,
-            "eff_date" => date_format(date_create($request['departureDate']), "m/d/Y"),
-            "term_date" => date_format(date_create($request['returnDate']), "m/d/Y"),
+            "eff_date" => date_format(date_create($request['startDate']), "m/d/Y"),
+            "term_date" => date_format(date_create($request['endDate']), "m/d/Y"),
             "country" => "IN", // $request['residenceCountry'],
             "destination" => "US", //$request['destination'],
             "policy_max" => 100000,
             "deductible" => 250,
-            "dob1" => date_format(date_create($request['birthday']), "m/d/Y"),
+            "dob1" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
             "t1First" => $request['first_name'],
             "t1Middle" => "",
             "t1Last" => $request['last_name'],
