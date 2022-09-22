@@ -66,6 +66,7 @@ class QuoteController extends Controller
         //                 ]]
         //             ]],
         //         ];
+        //         // return response()->json($payload);
         //         $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/quotes', $payload);
 
         //         $product['data'] = $response->json();
@@ -74,123 +75,123 @@ class QuoteController extends Controller
 
         // Travel Insured
         $ti_products = [];
-        $client = new Client(
-            'https://sandboxapi.travelinsured.com/graphql',
-            ['Authorization' => 'Basic MGQ0ODJjMmItZDc0OC00MjkwLWJkYmYtZWUxYjBhMjZmN2Q5Ok9mRDhRfjZadlF4c0hrVk92dlVtNnV5QXJHcy1HeUx0UlFhTEFiNjQ=']
-        );
+        // $client = new Client(
+        //     'https://sandboxapi.travelinsured.com/graphql',
+        //     ['Authorization' => 'Basic MGQ0ODJjMmItZDc0OC00MjkwLWJkYmYtZWUxYjBhMjZmN2Q5Ok9mRDhRfjZadlF4c0hrVk92dlVtNnV5QXJHcy1HeUx0UlFhTEFiNjQ=']
+        // );
 
-        $gql = <<<QUERY
-        query {
-            accessToken {
-              accessToken,
-              expiresIn,
-              tokenType
-            }
-          }
-        QUERY;
+        // $gql = <<<QUERY
+        // query {
+        //     accessToken {
+        //       accessToken,
+        //       expiresIn,
+        //       tokenType
+        //     }
+        //   }
+        // QUERY;
 
-        try {
-            $results = $client->runRawQuery($gql);
-            $accessToken = $results->getData()->accessToken->accessToken;
-        }
-        catch (QueryError $exception) {
-            return response()->json($exception->getErrorDetails());
-        }
+        // try {
+        //     $results = $client->runRawQuery($gql);
+        //     $accessToken = $results->getData()->accessToken->accessToken;
+        // }
+        // catch (QueryError $exception) {
+        //     return response()->json($exception->getErrorDetails());
+        // }
 
-        $client = new Client(
-            'https://sandboxapi.travelinsured.com/graphql',
-            ['Authorization' => 'Bearer ' . $accessToken ]
-        );
+        // $client = new Client(
+        //     'https://sandboxapi.travelinsured.com/graphql',
+        //     ['Authorization' => 'Bearer ' . $accessToken ]
+        // );
 
-        $gql = (new Query('quote'))
-            ->setVariables([new Variable('planQuoteRequest', 'PlanQuoteRequestInput', true)])
-            ->setArguments(['planQuoteRequest' => '$planQuoteRequest'])
-            ->setSelectionSet([
-                'productCode',
-                'productName',
-                'productDescription',
-                (new Query('pricing'))
-                    ->setSelectionSet([
-                        'premium',
-                        (new Query('travelerBreakdown '))
-                            ->setSelectionSet([
-                                'firstName',
-                                'lastName',
-                                (new Query('pricingDetail'))
-                                    ->setSelectionSet([
-                                        'price',
-                                        'productCoverageType',
-                                        'productCoverageDescription',
-                                        'productCoverageCode',
-                                        'productCoverageLimitAmount'
-                                    ])
-                            ])
-                    ]),
-                (new Query('availableProductCoverage'))
-                    ->setSelectionSet([
-                        (new Query('coverageDetails'))
-                            ->setSelectionSet([
-                                'productCoverageType',
-                                'productCoverageTypeCode',
-                                'productCoverageExplanation',
-                                'daysPurchasableFromInitDeposit',
-                                (new Query('productCoverageLimits '))
-                                    ->setSelectionSet([
-                                        'maxPerPlanLimitAmount',
-                                        'maxPerPersonLimitAmount',
-                                        'additionalText'
-                                    ]),
-                                (new Query('benefits'))
-                                    ->setSelectionSet([
-                                        'description',
-                                        'limit',
-                                        'limitDescription',
-                                        'categoryName'
-                                    ])
-                            ])
-                    ])
-        ]);
+        // $gql = (new Query('quote'))
+        //     ->setVariables([new Variable('planQuoteRequest', 'PlanQuoteRequestInput', true)])
+        //     ->setArguments(['planQuoteRequest' => '$planQuoteRequest'])
+        //     ->setSelectionSet([
+        //         'productCode',
+        //         'productName',
+        //         'productDescription',
+        //         (new Query('pricing'))
+        //             ->setSelectionSet([
+        //                 'premium',
+        //                 (new Query('travelerBreakdown '))
+        //                     ->setSelectionSet([
+        //                         'firstName',
+        //                         'lastName',
+        //                         (new Query('pricingDetail'))
+        //                             ->setSelectionSet([
+        //                                 'price',
+        //                                 'productCoverageType',
+        //                                 'productCoverageDescription',
+        //                                 'productCoverageCode',
+        //                                 'productCoverageLimitAmount'
+        //                             ])
+        //                     ])
+        //             ]),
+        //         (new Query('availableProductCoverage'))
+        //             ->setSelectionSet([
+        //                 (new Query('coverageDetails'))
+        //                     ->setSelectionSet([
+        //                         'productCoverageType',
+        //                         'productCoverageTypeCode',
+        //                         'productCoverageExplanation',
+        //                         'daysPurchasableFromInitDeposit',
+        //                         (new Query('productCoverageLimits '))
+        //                             ->setSelectionSet([
+        //                                 'maxPerPlanLimitAmount',
+        //                                 'maxPerPersonLimitAmount',
+        //                                 'additionalText'
+        //                             ]),
+        //                         (new Query('benefits'))
+        //                             ->setSelectionSet([
+        //                                 'description',
+        //                                 'limit',
+        //                                 'limitDescription',
+        //                                 'categoryName'
+        //                             ])
+        //                     ])
+        //             ])
+        // ]);
 
-        $variablesArray = [
-            "planQuoteRequest" => [
-                "departureDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
-                "returnDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
-                "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
-                "stateIsoCode" => $request['residenceState'],
-                "countryIsoCode" => $request['residenceCountry'],
-                "destinations" => [[ "countryIsoCode" => $request['destination'] ]],
-                "primaryTraveler" => [
-                    "dateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
-                    "tripCost" => (float)$request['cost']
-                ],
-                "additionalTravelers" => [] 
-            ]
-        ];
+        // $variablesArray = [
+        //     "planQuoteRequest" => [
+        //         "departureDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
+        //         "returnDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+        //         "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
+        //         "stateIsoCode" => $request['residenceState'],
+        //         "countryIsoCode" => $request['residenceCountry'],
+        //         "destinations" => [[ "countryIsoCode" => $request['destination'] ]],
+        //         "primaryTraveler" => [
+        //             "dateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
+        //             "tripCost" => (float)$request['cost']
+        //         ],
+        //         "additionalTravelers" => [] 
+        //     ]
+        // ];
 
-        try {
-            $results = $client->runQuery($gql, true, $variablesArray);
-            $ti_products = $results->getData()['quote'];
-        }
-        catch (QueryError $exception) {
-            return response()->json($exception->getErrorDetails());
-        }
+        // try {
+        //     $results = $client->runQuery($gql, true, $variablesArray);
+        //     $ti_products = $results->getData()['quote'];
+        // }
+        // catch (QueryError $exception) {
+        //     return response()->json($exception->getErrorDetails());
+        // }
 
         // Trawick
         $trawick_products = [];
-        // $response = Http::asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
-        //     "product" => 187,
-        //     "eff_date" => date_format(date_create($request['departureDate']), "m/d/Y"),
-        //     "term_date" => date_format(date_create($request['returnDate']), "m/d/Y"),
-        //     "country" => "US",
-        //     "state" => "MN",
-        //     "destination" => "US",
-        //     // "policy_max" => 15000,
-        //     // "deductible" => 250,
-        //     "dob1" => "2/5/1980",
-        //     // "agent_id" => 1
-        // ]);
+        $response = Http::asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+            "product" => 187,
+            "eff_date" => date_format(date_create($request['departureDate']), "m/d/Y"),
+            "term_date" => date_format(date_create($request['returnDate']), "m/d/Y"),
+            "country" => "US",
+            "state" => "MN",
+            "destination" => "US",
+            // "policy_max" => 15000,
+            // "deductible" => 250,
+            "dob1" => "2/5/1980",
+            // "agent_id" => 1
+        ]);
 
-        // array_push($trawick_products, $response->json());
+        array_push($trawick_products, $response->json());
 
         return response()->json(["products" => $products, "ti_products" => $ti_products, "trawick_products" => $trawick_products]);
     }
@@ -294,5 +295,87 @@ class QuoteController extends Controller
         catch (QueryError $exception) {
             return response()->json($exception->getErrorDetails());
         }
+    }
+
+    public function purchaseImg(Request $request){
+        $response = Http::asForm()->post('https://beta-services.imglobal.com/oAuth/token', [
+            'grant_type' => 'password',
+            'username' => 'jzglobalins@gmail.com',
+            'password' => 'Password1'
+        ]);
+
+        $token = $response['access_token'];
+
+        $metadata = json_decode($request['product']['metadata']);
+
+        $payload = [
+            "ProducerNumber" => "542276",
+            "ProductCode" => $metadata->productCode,
+            "AppType" => $metadata->appType,
+            "signatureName" => "John Raymond",
+            "ResidencyState" => $request['residenceState'],
+            "ResidencyCountry" => $request['residenceCountry'],
+            "TravelInfo" => [
+                "StartDate" => date_format(date_create($request['departureDate']), "m/d/Y"),
+                "EndDate" => date_format(date_create($request['returnDate']), "m/d/Y"),
+                "Destinations" => [$request['destination']],
+                "InitialPaymentDate" => date_format(date_create($request['depositDate']), "m/d/Y")
+            ],
+            "PolicyInfo" => [
+                "CurrencyCode" => "USD",
+                "FulfillmentMethod" => "Online",
+            ],
+            "Families" => [[
+                "Insureds" => [[
+                    "FirstName" => $request['first_name'],
+                    "LastName" => $request['last_name'],
+                    "Email" => $request['email'],
+                    "DateOfBirth" => date_format(date_create($request['birthday']), "m/d/Y"),
+                    "TripCost" => $request['cost']
+                ]]
+            ]],
+            "Contacts" => [
+                [
+                    "ContactInfoType" => "Billing",
+                    "CareOfName" => $request['first_name'] . " " . $request['last_name'],
+                    "Address" => $request['billingAddress']['address'],
+                    "Address2" => "",
+                    "CountyRegion" => "Marion",
+                    "City" => $request['billingAddress']['city'],
+                    "StateProvince" => $request['billingAddress']['stateIsoCode'],
+                    "PostalCode" => $request['billingAddress']['zipCode'],
+                    "Country" => $request['billingAddress']['countryIsoCode'],
+                    "Phone" => "555-123-4567",
+                    "Fax" => "555-123-4567",
+                    "Email" => $request['email']
+                ],
+                [
+                    "ContactInfoType" => "Residence",
+                    "CareOfName" => $request['first_name'] . " " . $request['last_name'],
+                    "Address" => $request['address'],
+                    "Address2" => "",
+                    "City" => $request['city'],
+                    "CountyRegion" => "Marion",
+                    "StateProvince" => $request['residenceState'],
+                    "PostalCode" => $request['zipCode'],
+                    "Country" => $request['residenceCountry'],
+                    "Phone" => $request['phone'],
+                    "Email" => $request['email']
+                ]
+            ],
+            "PaymentInfo" => [
+                "PaymentType" => 1,
+                "NameOnAccount" => $request['creditCard']['firstName'] . " " .  $request['creditCard']['lastName'],
+                "CreditCardNumber" => $request['creditCard']['cardNumber'],
+                "CardExpire" => $request['creditCard']['expiryDate'],
+                "CardCVV" => $request['creditCard']['cardVerificationValue']
+            ]
+        ];
+
+        // return response()->json($payload);
+
+        $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/purchases', $payload);
+
+        return response()->json($response->json());
     }
 }
