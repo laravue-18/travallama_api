@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\QuoteController;
 use App\Http\Controllers\Insurer\ImgController;
 use App\Http\Controllers\StateController;
+use App\Http\Controllers\ImgProductController;
+use App\Http\Controllers\TrawickProductController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,3 +35,7 @@ Route::post('quote-travel-insured', [QuoteController::class, 'quoteTravelInsured
 Route::post('purchase-travel-insured', [QuoteController::class, 'purchaseTravelInsured']);
 Route::post('quote-img', [ImgController::class, 'quote']);
 Route::post('purchase-img', [ImgController::class, 'purchase']);
+
+Route::get('imgProducts', [ImgProductController::class, 'index']);
+Route::post('imgQuote', [ImgProductController::class, 'quote']);
+Route::get('trawickProducts', [TrawickProductController::class, 'index']);
