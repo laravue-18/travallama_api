@@ -10,23 +10,176 @@ use GraphQL\Query;
 use GraphQL\Mutation;
 use GraphQL\Variable;
 
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use App\Models\Product;
 use App\Models\ImgProduct;
 use App\Models\TrawickProduct;
+use App\Models\GeoblueProduct;
+
+use App\Models\Token;
 
 
 class QuoteController extends Controller
 {
     public function index(Request $request){
-        $products = [];
+        $products = collect([]);
 
-        $imgProducts = ImgProduct::all()
-            ->map(function($item, $key){
-                $item['provider'] = 'IMG';
-                $item['price'] = '$606.37';
+        $trawickProducts = TrawickProduct::all()
+            ->map(function ($item) {
+                $item['provider'] = 'Trawick';
                 return $item;
             });
+
+        $geoblueProducts = GeoblueProduct::all()
+            ->map(function ($item){
+                $item['provider'] = 'Geo Blue';
+                return $item;
+            });
+
+        $products = $products
+            ->concat($trawickProducts)
+            ->concat($geoblueProducts);
+
+        $responses = Http::pool(fn (Pool $pool) => ($products
+            ->map(function ($item) use($pool, $request){
+                if($item['provider'] == 'Trawick')
+                    return $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+                            "product" => $item->product_id,
+                            "eff_date" => date_format(date_create($request['startDate']), "m/d/Y"),
+                            "term_date" => date_format(date_create($request['endDate']), "m/d/Y"),
+                            "country" => $request['residenceCountry'],
+                            "state" => $request['residenceState'],
+                            "destination" => $request['destination'],
+                            // "policy_max" => 15000,
+                            // "deductible" => 250,
+                            "dob1" => "2/5/1980",
+                            "agent_id" => 14695
+                        ]);
+                else if($item['provider'] == 'Geo Blue')
+                    return $pool
+                            ->withHeaders([
+                                'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                            ])
+                            ->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                                "linkid" => "258965",
+                                "Product" => $item['name'],
+                                "Zip" => "12345",
+                                "State" => $request['residenceState'],
+                                "DepartureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                                "ReturnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
+                                "TripCost" => "500",
+                                "Destination" => $request['destination'],
+                                "AgeList" => "20"
+                            ]);
+                } 
+            )
+        ));
+
+        $res = collect($responses)->map(fn ($item) => $item->json());
+
+        $products = $products->map(function($item, $key) use ($res){
+            if($item['provider'] == 'Trawick')
+                $item['price'] = $res[$key]['TotalPrice'];
+            else if($item['provider'] == 'Geo Blue')
+                $item['price'] = $res[$key]['Quotes'] ? $res[$key]['Quotes'][0]['Rate'] : 0;
+            return $item;
+        });
+
+        $products = $products->where('price', '>', 0)->values();
+
+        // Travel Insured
+        $tiToken = Token::where('provider', 'Travel Insured')->first()->token;
+
+        $client = new Client(
+            'https://sandboxapi.travelinsured.com/graphql',
+            ['Authorization' => 'Bearer ' . $tiToken ]
+        );
+
+        $gql = (new Query('quote'))
+            ->setVariables([new Variable('planQuoteRequest', 'PlanQuoteRequestInput', true)])
+            ->setArguments(['planQuoteRequest' => '$planQuoteRequest'])
+            ->setSelectionSet([
+                'productCode',
+                'productName',
+                'productDescription',
+                (new Query('pricing'))
+                    ->setSelectionSet([
+                        'premium',
+                        (new Query('travelerBreakdown '))
+                            ->setSelectionSet([
+                                'firstName',
+                                'lastName',
+                                (new Query('pricingDetail'))
+                                    ->setSelectionSet([
+                                        'price',
+                                        'productCoverageType',
+                                        'productCoverageDescription',
+                                        'productCoverageCode',
+                                        'productCoverageLimitAmount'
+                                    ])
+                            ])
+                    ]),
+                (new Query('availableProductCoverage'))
+                    ->setSelectionSet([
+                        (new Query('coverageDetails'))
+                            ->setSelectionSet([
+                                'productCoverageType',
+                                'productCoverageTypeCode',
+                                'productCoverageExplanation',
+                                'daysPurchasableFromInitDeposit',
+                                (new Query('productCoverageLimits '))
+                                    ->setSelectionSet([
+                                        'maxPerPlanLimitAmount',
+                                        'maxPerPersonLimitAmount',
+                                        'additionalText'
+                                    ]),
+                                (new Query('benefits'))
+                                    ->setSelectionSet([
+                                        'description',
+                                        'limit',
+                                        'limitDescription',
+                                        'categoryName'
+                                    ])
+                            ])
+                    ])
+        ]);
+
+        $variablesArray = [
+            "planQuoteRequest" => [
+                "departureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                "returnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
+                "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
+                "stateIsoCode" => $request['residenceState'],
+                "countryIsoCode" => $request['residenceCountry'],
+                "destinations" => [[ "countryIsoCode" => $request['destination'] ]],
+                "primaryTraveler" => [
+                    "dateOfBirth" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
+                    "tripCost" => (float)$request['tripCost']
+                ],
+                "additionalTravelers" => [] 
+            ]
+        ];
+
+        try {
+            $results = $client->runQuery($gql, true, $variablesArray);
+            $rlt = $results->getData()['quote'];
+            $tiProducts = collect($rlt);
+            $tiProducts = $tiProducts->map(function($item, $key){
+                $item['provider'] = 'Travel Insured';
+                $item['name'] = $item['productName'];
+                $item['price'] = $item['pricing']['premium'];
+                return $item;
+            });
+
+            $products = $products
+                ->concat($tiProducts);
+        }
+        catch (QueryError $exception) {
+            // return response()->json($exception->getErrorDetails());
+        }
+
+        return response()->json($products);
         
         $products = array_merge($products, $imgProducts->toArray());
             
