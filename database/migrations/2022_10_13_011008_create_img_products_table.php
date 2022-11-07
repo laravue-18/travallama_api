@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('code');
             $table->string('app_type');
+            $table->boolean('status')->default(true);
             $table->json('states')->nullable();
             $table->boolean('states_flag')->nullable();
             $table->json('riders')->nullable();

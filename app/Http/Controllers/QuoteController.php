@@ -12,69 +12,35 @@ use GraphQL\Variable;
 
 use Illuminate\Support\Facades\Http;
 use App\Models\Product;
+use App\Models\ImgProduct;
+use App\Models\TrawickProduct;
+
 
 class QuoteController extends Controller
 {
     public function index(Request $request){
-        // *** IMG ***
         $products = [];
-        $plans = Product::all();
 
-        foreach($plans as $plan){
-            $flag = false;
-            $metadata = json_decode($plan['metadata']);
-            if(isset($metadata->states)){
-                if(in_array($request['residenceState'], $metadata->states)) $flag = true;
-            }else if(isset($metadata->exceptStates)){
-                if(!in_array($request['residenceState'], $metadata->exceptStates)) $flag = true;
-            }
-            if($flag) array_push($products, $plan);
-        }
-
-        if(count($products)){
-            $response = Http::asForm()->post('https://beta-services.imglobal.com/oAuth/token', [
-                'grant_type' => 'password',
-                'username' => 'jzglobalins@gmail.com',
-                'password' => 'Password1'
-            ]);
-
-            $token = $response['access_token'];
+        $imgProducts = ImgProduct::all()
+            ->map(function($item, $key){
+                $item['provider'] = 'IMG';
+                $item['price'] = '$606.37';
+                return $item;
+            });
+        
+        $products = array_merge($products, $imgProducts->toArray());
             
-            foreach($products as $product){
-                $metadata = json_decode($product['metadata']);
-                $payload = [
-                    "ProducerNumber" => "542276",
-                    "ProductCode" => $metadata->productCode,
-                    "AppType" => $metadata->appType,
-                    "ResidencyState" => $request['residenceState'],
-                    "ResidencyCountry" => $request['residenceCountry'],
-                    "TravelInfo" => [
-                        "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
-                        "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
-                        "Destinations" => [
-                            "USA"
-                          ]
-                    ],
-                    "PolicyInfo" => [
-                        "CurrencyCode" => "USD",
-                        "FulfillmentMethod" => "Online",
-                    ],
-                    "Families" => [[
-                        "Insureds" => [[
-                                "DateOfBirth" => "08/31/1982",
-                                "TripCost" => $request['tripCost']
-                        ]]
-                    ]],
-                ];
-                // return response()->json($payload);
-                $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/quotes', $payload);
+        $trawickProducts = TrawickProduct::all()
+            ->map(function($item, $key){
+                $item['provider'] = 'Trawick';
+                $item['price'] = '$304.29';
+                return $item;
+            });
 
-                $product['data'] = $response->json();
-            }
-        }
+        $products = array_merge($products, $trawickProducts->toArray());
 
         // Travel Insured
-        $ti_products = [];
+        $tiProducts = [];
         $client = new Client(
             'https://sandboxapi.travelinsured.com/graphql',
             ['Authorization' => 'Basic MGQ0ODJjMmItZDc0OC00MjkwLWJkYmYtZWUxYjBhMjZmN2Q5Ok9mRDhRfjZadlF4c0hrVk92dlVtNnV5QXJHcy1HeUx0UlFhTEFiNjQ=']
@@ -170,11 +136,83 @@ class QuoteController extends Controller
 
         try {
             $results = $client->runQuery($gql, true, $variablesArray);
-            $ti_products = $results->getData()['quote'];
+            $rlt = $results->getData()['quote'];
+            $tiProducts = collect($rlt);
+            $tiProducts = $tiProducts->map(function($item, $key){
+                $item['provider'] = 'Travel Insured';
+                $item['name'] = $item['productName'];
+                $item['price'] = $item['pricing']['premium'];
+                return $item;
+            });
         }
         catch (QueryError $exception) {
             return response()->json($exception->getErrorDetails());
         }
+
+        $products = array_merge($products, $tiProducts->toArray());
+
+        // Geo Blue
+
+        return response()->json($products);
+
+
+        // *** IMG ***
+        $products = [];
+        $plans = Product::all();
+
+        foreach($plans as $plan){
+            $flag = false;
+            $metadata = json_decode($plan['metadata']);
+            if(isset($metadata->states)){
+                if(in_array($request['residenceState'], $metadata->states)) $flag = true;
+            }else if(isset($metadata->exceptStates)){
+                if(!in_array($request['residenceState'], $metadata->exceptStates)) $flag = true;
+            }
+            if($flag) array_push($products, $plan);
+        }
+
+        if(count($products)){
+            $response = Http::asForm()->post('https://beta-services.imglobal.com/oAuth/token', [
+                'grant_type' => 'password',
+                'username' => 'jzglobalins@gmail.com',
+                'password' => 'Password1'
+            ]);
+
+            $token = $response['access_token'];
+            
+            foreach($products as $product){
+                $metadata = json_decode($product['metadata']);
+                $payload = [
+                    "ProducerNumber" => "542276",
+                    "ProductCode" => $metadata->productCode,
+                    "AppType" => $metadata->appType,
+                    "ResidencyState" => $request['residenceState'],
+                    "ResidencyCountry" => $request['residenceCountry'],
+                    "TravelInfo" => [
+                        "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                        "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
+                        "Destinations" => [
+                            "USA"
+                          ]
+                    ],
+                    "PolicyInfo" => [
+                        "CurrencyCode" => "USD",
+                        "FulfillmentMethod" => "Online",
+                    ],
+                    "Families" => [[
+                        "Insureds" => [[
+                                "DateOfBirth" => "08/31/1982",
+                                "TripCost" => $request['tripCost']
+                        ]]
+                    ]],
+                ];
+                // return response()->json($payload);
+                $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/quotes', $payload);
+
+                $product['data'] = $response->json();
+            }
+        }
+
 
         // Trawick
         $trawick_products = [];

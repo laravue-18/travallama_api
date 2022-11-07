@@ -13,11 +13,9 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('trawick_products', function (Blueprint $table) {
+        Schema::create('geoblue_products', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->integer('product_id');
-            $table->string('rate_type');
             $table->boolean('status')->default(true);
             $table->timestamps();
         });
@@ -30,6 +28,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('trawick_products');
+        Schema::dropIfExists('geoblue_products');
     }
 };

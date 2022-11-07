@@ -13,12 +13,12 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('trawick_products', function (Blueprint $table) {
+        Schema::create('geoblue_plans', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('geoblue_product_id');
             $table->string('name');
-            $table->integer('product_id');
-            $table->string('rate_type');
-            $table->boolean('status')->default(true);
+            $table->string('product_type_id');
+            $table->string('plan_id');
             $table->timestamps();
         });
     }
@@ -30,6 +30,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('trawick_products');
+        Schema::dropIfExists('geoblue_plans');
     }
 };
