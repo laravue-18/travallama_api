@@ -71,7 +71,7 @@ class Kernel extends ConsoleKernel
                 $accessToken = $response['access_token'];
 
                 $token = Token::where('provider', 'img')->first();
-                
+
                 $token->update([
                     'token' => $accessToken
                 ]);
@@ -79,7 +79,7 @@ class Kernel extends ConsoleKernel
                 return response()->json($exception->getErrorDetails());
             }
 
-        })->everyFiveMinutes();
+        })->everyThirtyMinutes();
 
         // $schedule->call(function(){
         //     $items = TrawickDailyRate::all();
