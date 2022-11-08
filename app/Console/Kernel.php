@@ -13,6 +13,14 @@ use App\Models\TrawickDailyRate;
 use App\Models\TrawickTripcostRate;
 use Carbon\Carbon;
 
+use GraphQL\Client;
+use GraphQL\Exception\QueryError;
+use GraphQL\Query;
+use GraphQL\Mutation;
+use GraphQL\Variable;
+
+use App\Models\Token;
+
 class Kernel extends ConsoleKernel
 {
     /**
@@ -24,6 +32,54 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // $schedule->command('inspire')->hourly();
+
+        $schedule->call(function(){
+            $client = new Client(
+                'https://sandboxapi.travelinsured.com/graphql',
+                ['Authorization' => 'Basic MGQ0ODJjMmItZDc0OC00MjkwLWJkYmYtZWUxYjBhMjZmN2Q5Ok9mRDhRfjZadlF4c0hrVk92dlVtNnV5QXJHcy1HeUx0UlFhTEFiNjQ=']
+            );
+            $gql = <<<QUERY
+            query {
+                accessToken {
+                  accessToken,
+                  expiresIn,
+                  tokenType
+                }
+              }
+            QUERY;
+    
+            try {
+                $results = $client->runRawQuery($gql);
+                Log::info('every 30 minutes');
+                $accessToken = $results->getData()->accessToken->accessToken;
+                $token = Token::where('provider', 'Travel Insured')->first();
+                $token->update([
+                    'token' => $accessToken
+                ]);
+            }
+            catch (QueryError $exception) {
+                return response()->json($exception->getErrorDetails());
+            }
+
+            try{
+                $response = Http::asForm()->post('https://beta-services.imglobal.com/oAuth/token', [
+                    'grant_type' => 'password',
+                    'username' => 'jzglobalins@gmail.com',
+                    'password' => 'Password1'
+                ]);
+    
+                $token = $response['access_token'];
+
+                $accessToken = Token::where('provider', 'Travel Insured')->first();
+                $token->update([
+                    'token' => $accessToken
+                ]);
+            }catch (QueryError $exception) {
+                return response()->json($exception->getErrorDetails());
+            }
+
+        })->everyThirtyMinutes();
+
         $schedule->call(function(){
             $items = TrawickDailyRate::all();
             foreach($items as $item){
@@ -163,7 +219,7 @@ class Kernel extends ConsoleKernel
             //         }
             //     }
             // }
-        })->hourlyAt(50);
+        })->daily();
     }
 
     /**
