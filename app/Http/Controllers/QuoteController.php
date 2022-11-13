@@ -12,207 +12,156 @@ use GraphQL\Variable;
 
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
+
 use App\Models\Product;
-use App\Models\ImgProduct;
+
 use App\Models\TrawickProduct;
+use App\Models\TrawickDailyRate;
+use App\Models\TrawickTripcostRate;
+use App\Models\TrawickAnnualRate;
+use App\Models\TrawickTrekerRate;
+
+use App\Models\TiProduct;
+use App\Models\TiRate;
+
 use App\Models\GeoblueProduct;
+use App\Models\GeoblueRate;
+
+use App\Models\ImgProduct;
+use App\Models\ImgRate;
+
 
 use App\Models\Token;
 
+use Carbon\Carbon;
 
 class QuoteController extends Controller
 {
     public function index(Request $request){
+        $age = Carbon::createFromDate($request['birthday'])->age;
+        $date1 = Carbon::createMidnightDate($request['startDate']);
+        $date2 = Carbon::createMidnightDate($request['endDate']);
+        $days = $date1->diffInDays($date2);
+        $tripCost = $request['tripCost'];
+
         $products = collect([]);
 
-        $trawickProducts = TrawickProduct::all()
-            ->map(function ($item) {
-                $item['provider'] = 'Trawick';
-                return $item;
-            });
+        $trawickProducts = TrawickProduct::where('status', 1)->get();
 
-        $geoblueProducts = GeoblueProduct::all()
-            ->map(function ($item){
-                $item['provider'] = 'Geo Blue';
-                return $item;
-            });
-        
-        $imgProducts = ImgProduct::all()
-            ->map(function ($item){
-                $item['provider'] = 'IMG';
-                return $item;
-            });
-
-        $products = $products
-            ->concat($trawickProducts)
-            ->concat($geoblueProducts);
-        
-        $imgToken = Token::where('provider', 'img')->first()->token;
-
-        $responses = Http::pool(fn (Pool $pool) => ($products
-            ->map(function ($item) use($pool, $request){
-                if($item['provider'] == 'Trawick')
-                    return $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
-                            "product" => $item->product_id,
-                            "eff_date" => date_format(date_create($request['startDate']), "m/d/Y"),
-                            "term_date" => date_format(date_create($request['endDate']), "m/d/Y"),
-                            "country" => $request['residenceCountry'],
-                            "state" => $request['residenceState'],
-                            "destination" => $request['destination'],
-                            // "policy_max" => 15000,
-                            // "deductible" => 250,
-                            "dob1" => "2/5/1980",
-                            "agent_id" => 14695
-                        ]);
-                else if($item['provider'] == 'Geo Blue')
-                    return $pool
-                            ->withHeaders([
-                                'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
-                            ])
-                            ->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
-                                "linkid" => "258965",
-                                "Product" => $item['name'],
-                                "Zip" => "12345",
-                                "State" => $request['residenceState'],
-                                "DepartureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
-                                "ReturnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
-                                "TripCost" => "500",
-                                "Destination" => $request['destination'],
-                                "AgeList" => "20"
-                            ]);
-                else if($item['provider'] == 'img')
-                    return $pool
-                            ->withToken($imgToken)
-                            ->post('https://beta-services.imglobal.com/API/quotes', [
-                                "ProducerNumber" => "542276",
-                                "ProductCode" => $metadata->productCode,
-                                "AppType" => $metadata->appType,
-                                "ResidencyState" => $request['residenceState'],
-                                "ResidencyCountry" => $request['residenceCountry'],
-                                "TravelInfo" => [
-                                    "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
-                                    "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
-                                    "Destinations" => [
-                                        "USA"
-                                      ]
-                                ],
-                                "PolicyInfo" => [
-                                    "CurrencyCode" => "USD",
-                                    "FulfillmentMethod" => "Online",
-                                ],
-                                "Families" => [[
-                                    "Insureds" => [[
-                                            "DateOfBirth" => "08/31/1982",
-                                            "TripCost" => $request['tripCost']
-                                    ]]
-                                ]],
-                            ]);
-                } 
-            )
-        ));
-
-        $res = collect($responses)->map(fn ($item) => $item->json());
-
-        $products = $products->map(function($item, $key) use ($res){
-            if($item['provider'] == 'Trawick')
-                $item['price'] = $res[$key]['TotalPrice'];
-            else if($item['provider'] == 'Geo Blue')
-                $item['price'] = $res[$key]['Quotes'] ? $res[$key]['Quotes'][0]['Rate'] : 0;
+        $trawickProducts = $trawickProducts->map(function ($item) {
+            $item['provider'] = 'Trawick';
+            $item['price'] = 0;
             return $item;
         });
 
-        $products = $products->where('price', '>', 0)->values();
+        $trawickProducts = $trawickProducts->filter(function ($item, $key) use($request){
+            if($item['country_type'] == 'inbound'){
+                if($request['destination'] == 'US'){
+                    return true;
+                }else{
+                    return false;
+                }
+            }else if($item['country_type'] == 'international'){
+                if($request['destination'] != 'USA' && ($request['country'] != 'USA') && ($request['country'] != $request['destination'])){
+                    return true;
+                }else{
+                    return false;
+                }
+            }else if($item['country_type'] == 'outbound'){
+                if($request['country'] == 'USA' && $request['country'] != $request['destination']){
+                    return true;
+                }else{
+                    return false;
+                }
+            }else{
+                return true;
+            }
+        });
 
-        // Travel Insured
-        // $tiToken = Token::where('provider', 'Travel Insured')->first()->token;
+        $trawickProducts = $trawickProducts->map(function ($item) use($age, $tripCost, $days) {
+            
+            if($item['rate_type'] == 'daily'){
+                $daily_rate = TrawickDailyRate::where([
+                    ['trawick_product_id', '=', $item->id],
+                    ['age_min', '<', $age ],
+                    ['age_max', '>', $age ]
+                ])->first()->daily_rate;
 
-        // $client = new Client(
-        //     'https://sandboxapi.travelinsured.com/graphql',
-        //     ['Authorization' => 'Bearer ' . $tiToken ]
-        // );
+                $item['price'] = $daily_rate * $days;
+            }else if($item['rate_type'] == 'trip_cost'){
+                $rate = TrawickTripcostRate::where([
+                    ['trawick_product_id', '=', $item->id],
+                    ['age_min', '<', $age ],
+                    ['age_max', '>', $age ],
+                    ['cost_min', '<=', $tripCost],
+                    ['cost_max', '>=', $tripCost]
+                ])->first();
 
-        // $gql = (new Query('quote'))
-        //     ->setVariables([new Variable('planQuoteRequest', 'PlanQuoteRequestInput', true)])
-        //     ->setArguments(['planQuoteRequest' => '$planQuoteRequest'])
-        //     ->setSelectionSet([
-        //         'productCode',
-        //         'productName',
-        //         'productDescription',
-        //         (new Query('pricing'))
-        //             ->setSelectionSet([
-        //                 'premium',
-        //                 (new Query('travelerBreakdown '))
-        //                     ->setSelectionSet([
-        //                         'firstName',
-        //                         'lastName',
-        //                         (new Query('pricingDetail'))
-        //                             ->setSelectionSet([
-        //                                 'price',
-        //                                 'productCoverageType',
-        //                                 'productCoverageDescription',
-        //                                 'productCoverageCode',
-        //                                 'productCoverageLimitAmount'
-        //                             ])
-        //                     ])
-        //             ]),
-        //         (new Query('availableProductCoverage'))
-        //             ->setSelectionSet([
-        //                 (new Query('coverageDetails'))
-        //                     ->setSelectionSet([
-        //                         'productCoverageType',
-        //                         'productCoverageTypeCode',
-        //                         'productCoverageExplanation',
-        //                         'daysPurchasableFromInitDeposit',
-        //                         (new Query('productCoverageLimits '))
-        //                             ->setSelectionSet([
-        //                                 'maxPerPlanLimitAmount',
-        //                                 'maxPerPersonLimitAmount',
-        //                                 'additionalText'
-        //                             ]),
-        //                         (new Query('benefits'))
-        //                             ->setSelectionSet([
-        //                                 'description',
-        //                                 'limit',
-        //                                 'limitDescription',
-        //                                 'categoryName'
-        //                             ])
-        //                     ])
-        //             ])
-        // ]);
+                if($rate) $item['price'] = $rate->rate;
+            }else if($item['rate_type'] == 'annual'){
+                $rate = TrawickAnnualRate::where('trawick_product_id', $item->id)->first();
+                if($rate) $item['price'] = $rate->rate;
+            }else if($item['rate_type'] == 'treker'){
+                $row = TrawickTrekerRate::where('trawick_product_id', $item->id)->first();
+                if($row) $item['price'] = ( $days > 30 ? $row->rate2 : $row->rate1 ) + 30;
+            }
+            return $item;
+        });
+        
+        $products = $products->concat($trawickProducts);
 
-        // $variablesArray = [
-        //     "planQuoteRequest" => [
-        //         "departureDate" => date_format(date_create($request['startDate']), "m/d/Y"),
-        //         "returnDate" => date_format(date_create($request['endDate']), "m/d/Y"),
-        //         "depositDate" => date_format(date_create($request['depositDate']), "m/d/Y"),
-        //         "stateIsoCode" => $request['residenceState'],
-        //         "countryIsoCode" => $request['residenceCountry'],
-        //         "destinations" => [[ "countryIsoCode" => $request['destination'] ]],
-        //         "primaryTraveler" => [
-        //             "dateOfBirth" => date_format(date_create($request['t1Birthday']), "m/d/Y"),
-        //             "tripCost" => (float)$request['tripCost']
-        //         ],
-        //         "additionalTravelers" => [] 
-        //     ]
-        // ];
+        $tiProducts = TiProduct::where('status', 1)->get();
 
-        // try {
-        //     $results = $client->runQuery($gql, true, $variablesArray);
-        //     $rlt = $results->getData()['quote'];
-        //     $tiProducts = collect($rlt);
-        //     $tiProducts = $tiProducts->map(function($item, $key){
-        //         $item['provider'] = 'Travel Insured';
-        //         $item['name'] = $item['productName'];
-        //         $item['price'] = $item['pricing']['premium'];
-        //         return $item;
-        //     });
+        $tiProducts = $tiProducts->map(function ($item) use($age, $tripCost){
+            $item['provider'] = 'Travel Insured';
+            $item['price'] = 0;
+            $row = TiRate::where([
+                ['ti_product_id', '=', $item->id],
+                ['age_min', '<=', $age ],
+                ['age_max', '>=', $age ],
+                ['trip_cost_min', '<=', $tripCost],
+                ['trip_cost_max', '>=', $tripCost]
+            ])->first();
+            if($row) $item['price'] = $row->rate;
 
-        //     $products = $products
-        //         ->concat($tiProducts);
-        // }
-        // catch (QueryError $exception) {
-        //     // return response()->json($exception->getErrorDetails());
-        // }
+            return $item;
+        });
+
+        $products = $products->concat($tiProducts);
+
+        $geoblueProducts = GeoblueProduct::all()->map(function($item) use($age, $tripCost, $days){
+            $item['provider'] = 'Geo Blue';
+            $item['price'] = 0;
+            $row = GeoblueRate::where([
+                'geoblue_product_id' => $item->id,
+                'age' => $age,
+                'days' => $days,
+                'trip_cost' => $tripCost
+            ])->first();
+            if($row) $item['price'] = $row->rate;
+
+            return $item;
+        });
+
+        $products = $products->concat($geoblueProducts);
+        
+        $imgProducts = ImgProduct::all()->map(function($item) use($age, $tripCost, $days){
+            $item['provider'] = 'IMG';
+            $item['price'] = 0;
+            $row = ImgRate::where([
+                'img_product_id' => $item->id,
+                'age' => $age,
+                'days' => $days,
+                'trip_cost' => $tripCost
+            ])->first();
+            if($row) $item['price'] = $row->rate;
+
+            return $item;
+        });
+
+        $products = $products->concat($imgProducts);
+
+        $products = $products->filter(fn ($item) => $item['price'] )->values();
 
         return response()->json($products);
     }

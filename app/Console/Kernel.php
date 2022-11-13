@@ -6,11 +6,19 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Log;
 
 use App\Models\TrawickProduct;
 use App\Models\TrawickDailyRate;
 use App\Models\TrawickTripcostRate;
+use App\Models\TiProduct;
+use App\Models\TiRate;
+use App\Models\GeoblueProduct;
+use App\Models\GeoblueRate;
+use App\Models\ImgProduct;
+use App\Models\ImgRate;
+
 use Carbon\Carbon;
 
 use GraphQL\Client;
@@ -31,8 +39,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
-
+        // Token Refresh
         $schedule->call(function(){
             $client = new Client(
                 'https://sandboxapi.travelinsured.com/graphql',
@@ -50,7 +57,6 @@ class Kernel extends ConsoleKernel
     
             try {
                 $results = $client->runRawQuery($gql);
-                Log::info('every 30 minutes');
                 $accessToken = $results->getData()->accessToken->accessToken;
                 $token = Token::where('provider', 'Travel Insured')->first();
                 $token->update([
@@ -81,146 +87,222 @@ class Kernel extends ConsoleKernel
 
         })->everyThirtyMinutes();
 
-        // $schedule->call(function(){
-        //     $items = TrawickDailyRate::all();
-        //     foreach($items as $item){
-        //         $product = TrawickProduct::find($item->trawick_product_id);
-        //         $country = $product->country_type == 'outbound' ? 'US' : 'IT';
-        //         $destination = $product->country_type == 'inbound' ? 'US' : 'AF';
-        //         try {
-        //             $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
-        //                 "product" => $product->product_id,
-        //                 "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
-        //                 "term_date" => Carbon::now()->addDays(19)->format('m/d/Y'),
-        //                 "country" => $country,
-        //                 "home_state" => "AK", 
-        //                 "destination" => $destination,
-        //                 "policy_max" => $item->policy_max,
-        //                 "deductible" => $item->deductible,
-        //                 "dob1" => Carbon::now()->subYears($item->age_max)->format('m/d/Y'),
-        //                 "agent_id" => 14695
-        //             ]);
+        // Trawick TripCost Rate
+        $schedule->call(function(){
+            $items = TrawickTripcostRate::all();
+
+            foreach($items as $item){
+                try {
+                    $product = TrawickProduct::find($item->trawick_product_id);
+                    $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+                        "product" => $product->product_id,
+                        "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                        "term_date" => Carbon::now()->addDays(19)->format('m/d/Y'),
+                        "country" => "US",
+                        "home_state" => "AK", 
+                        "destination" => "US",
+                        "trip_cost_per_person" => $item->cost_max,
+                        "dob1" => Carbon::now()->subYears($item->age_max)->format('m/d/Y'),
+                        "agent_id" => 14695
+                    ]);
+
+                    $item->update(['rate' => $response->json()["TotalPrice"]]);
+
+                } catch (\Exception $e){
+                    continue;
+                }
+            }
+        })->daily();
+
+        // Travel Insured Rate
+        $schedule->call(function (){
+            $items = TiRate::all();
+
+            foreach($items as $item){
+                try {
+                    $product = TiProduct::find($item->ti_product_id);
                     
-        //             Log::info(($response->json()["TotalPrice"]) / 10);
+                    $tiToken = Token::where('provider', 'Travel Insured')->first()->token;
 
-        //             $item
-        //                 ->update([
-        //                     'daily_rate' => ($response->json()["TotalPrice"]) ?  ($response->json()["TotalPrice"]) / 10 : 0 
-        //                 ]);
-        //         }catch (\Exception $e){
-        //             continue;
-        //         }
+                    $client = new Client(
+                        'https://sandboxapi.travelinsured.com/graphql',
+                        ['Authorization' => 'Bearer ' . $tiToken ]
+                    );
+                    
+                    $gql = (new Query('quote'))
+                        ->setVariables([new Variable('planQuoteRequest', 'PlanQuoteRequestInput', true)])
+                        ->setArguments(['planQuoteRequest' => '$planQuoteRequest'])
+                        ->setSelectionSet([
+                            (new Query('pricing'))
+                                ->setSelectionSet([
+                                    'premium'
+                                ])
+                        ]);
 
-        //     }
-        //     // $products = TrawickProduct::where('rate_type', 'daily')->get();
+                    $variablesArray = [
+                        "planQuoteRequest" => [
+                            "departureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "returnDate" => Carbon::now()->addDays(19)->format('m/d/Y'),
+                            "depositDate" => Carbon::now()->subDays(19)->format('m/d/Y'),
+                            "stateIsoCode" => 'HI',
+                            "countryIsoCode" => 'USA',
+                            "destinations" => [[ "countryIsoCode" => 'GB' ]],
+                            "primaryTraveler" => [
+                                "dateOfBirth" => Carbon::now()->subYears($item->age_max)->format('m/d/Y'),
+                                "tripCost" => $item->trip_cost_max
+                            ],
+                            "additionalTravelers" => [],
+                            "products" => [
+                                [
+                                    "productCode" => $product->code,
+                                    "optionalCoverages" => [] 
+                                ]
+                            ]
+                           
+                        ]
+                    ];
 
-        //     // foreach($products as $product){
-        //     //     $deductibles = [0, 50, 100, 250, 500, 1000, 2500, 5000];
-        //     //     $country = $product->country_type == 'outbound' ? 'US' : 'IT';
-        //     //     $destination = $product->country_type == 'inbound' ? 'US' : 'AF';
-        //     //     foreach($deductibles as $deductible){
-        //     //         $policyMaxes = [50000, 100000, 250000, 500000, 1000000];
-        //     //         foreach($policyMaxes as $policyMax){
-        //     //             $ages = $policyMax == 50000 
-        //     //                 ? [[0, 17], [18, 29], [30, 39], [40, 49], [50, 59], [60, 64], [65, 69], [70, 79], [80, 89]] 
-        //     //                 : [[0, 17], [18, 29], [30, 39], [40, 49], [50, 59], [60, 64]];
+                    $results = $client->runQuery($gql, true, $variablesArray);
+                    $rlt = $results->getData()['quote'][0]['pricing']['premium'];
 
-        //     //             foreach($ages as $age){
-        //     //                 Log::info($product->id . ':' . $age[1]);
+                    TiRate::find($item->id)->update(['rate' => $rlt]);
 
-        //     //                 $rate = TrawickDailyRate::where([
-        //     //                     ['trawick_product_id', '=', $product->id],
-        //     //                     ['deductible', '=', $deductible],
-        //     //                     ['age_min', '=', $age[0]],
-        //     //                     ['age_max', '=', $age[1]],
-        //     //                     ['policy_max', '=', $policyMax],
-        //     //                 ])->first();
-                                
-        //     //                 if($rate){
-        //     //                     // $rate->update(['daily_rate' => ($response->json()["TotalPrice"]) ?  ($response->json()["TotalPrice"]) / 10 : 0 ]);
-        //     //                 }else{
-                                
-        //     //                     try {
-        //     //                         $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
-        //     //                             "product" => $product->product_id,
-        //     //                             "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
-        //     //                             "term_date" => Carbon::now()->addDays(19)->format('m/d/Y'),
-        //     //                             "country" => $country,
-        //     //                             "home_state" => "AK", 
-        //     //                             "destination" => $destination,
-        //     //                             "policy_max" => $policyMax,
-        //     //                             "deductible" => $deductible,
-        //     //                             "dob1" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
-        //     //                             "agent_id" => 14695
-        //     //                         ]);
-        
-        //     //                     } catch (\Exception $e){
-        //     //                         continue;
-        //     //                     }
+                } catch (\Exception $e){
+                    continue;
+                }
+            }
+        })->daily();
 
-        //     //                     Log::info($response);
-        //     //                     TrawickDailyRate::create([
-        //     //                         'trawick_product_id' => $product->id,
-        //     //                         'deductible' => $deductible,
-        //     //                         'age_min' => $age[0],
-        //     //                         'age_max' => $age[1],
-        //     //                         'policy_max' => $policyMax,
-        //     //                         'daily_rate' => ($response->json()["TotalPrice"]) ?  ($response->json()["TotalPrice"]) / 10 : 0
-        //     //                     ]);
-        //     //                 }
-        //     //             }
-        //     //         }
-        //     //     }
-        //     // }
+        // Geo Blue Rates
+        $schedule->call(function (){
+            $products = GeoblueProduct::all();
+            $count = 0;
+            foreach($products as $product){
+                for($age = 1; $age < 100; $age++){
+                    for($days = 1; $days < 90; $days++){
+                        for($i  = 1; $i < 40; $i++){
+                            $tripCost = $i * 500;
 
-        //     // $products = TrawickProduct::where('rate_type', 'trip_cost')->get();
+                            $row = GeoblueRate::where([
+                                'geoblue_product_id' => $product->id,
+                                'age' => $age,
+                                'days' => $days,
+                                'trip_cost' => $tripCost
+                            ])->first();
 
-        //     // foreach($products as $product){
-        //     //     $costs = [[0, 0], [1, 500], [501, 1000], [1001, 1500], [1501, 2000], [2001, 2500], [2501, 3000], [3001, 3500], [3501, 4000], [4001, 4500], [4501, 5000], [5001, 5500], [5501, 6000], [6001, 6500], [6501, 7000], [7001, 8000], [8001, 9000], [9001, 10000], [10001, 11000], [12001, 13000], [13001, 14000], [14001, 15000]];
-        //     //     $ages = [[0, 34], [35, 55], [56, 64], [65, 70], [71, 80], [81, 100]];
-        //     //     foreach($costs as $cost){
-        //     //         foreach($ages as $age){
-        //     //             $rate = TrawickTripcostRate::where([
-        //     //                 ['trawick_product_id', '=', $product->id],
-        //     //                 ['age_max', '=', $age[1]],
-        //     //                 ['cost_max', '=', $cost[1]],
-        //     //             ])->first();
+                            Log::info($row);
 
-        //     //             if($rate){
-        //     //                 // $rate->update(['daily_rate' => ($response->json()["TotalPrice"]) ?  ($response->json()["TotalPrice"]) / 10 : 0 ]);
-        //     //             }else{
-                            
-        //     //                 try {
-        //     //                     $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
-        //     //                         "product" => $product->product_id,
-        //     //                         "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
-        //     //                         "term_date" => Carbon::now()->addDays(19)->format('m/d/Y'),
-        //     //                         "country" => "US",
-        //     //                         "home_state" => "AK", 
-        //     //                         "destination" => "US",
-        //     //                         "trip_cost_per_person" => $cost[1],
-        //     //                         "dob1" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
-        //     //                         "agent_id" => 14695
-        //     //                     ]);
+                            if($row->id) continue;
+
+                            try{
+                                Log::info($row->id);
+
+                                $res = Http::withHeaders([
+                                        'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                                    ])
+                                    ->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                                        "linkid" => "258965",
+                                        "Product" => $product['name'],
+                                        "Zip" => "12345",
+                                        "State" => "PA",
+                                        "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                        "ReturnDate" => Carbon::now()->addDays(10 + $days)->format('m/d/Y'),
+                                        "TripCost" => $tripCost,
+                                        "Destination" => 'AFGHANISTAN',
+                                        "AgeList" => $age
+                                    ]);
     
-        //     //                 } catch (\Exception $e){
-        //     //                     continue;
-        //     //                 }
+                                $rate = $res->json()['Quotes'][0]['Rate'];
+                                
+                                Log::info($rate);
+                                
+                                GeoblueRate::updateOrCreate([
+                                    'geoblue_product_id' => $product->id,
+                                    'age' => $age,
+                                    'days' => $days,
+                                    'trip_cost' => $tripCost
+                                ],[
+                                    'rate' => $rate
+                                ]);
 
-        //     //                 Log::info($response);
-        //     //                 TrawickTripcostRate::create([
-        //     //                     'trawick_product_id' => $product->id,
-        //     //                     'cost_min' => $cost[0],
-        //     //                     'cost_max' => $cost[1],
-        //     //                     'age_min' => $age[0],
-        //     //                     'age_max' => $age[1],
-        //     //                     'rate' => ($response->json()["TotalPrice"]) ?  ($response->json()["TotalPrice"]) : 0
-        //     //                 ]);
-        //     //             }
-        //     //         }
-        //     //     }
-        //     // }
-        // })->daily();
+                                $count++;
+
+                                if($count == 20) break 3;
+                            }catch (\Exception $e){
+
+                            }
+                        }
+                    }
+                }
+            }
+        })->everyMinute();
+
+        // IMG Rates
+        $schedule->call(function (){
+            $products = ImgProduct::all();
+            foreach($products as $product){
+                for($age = 1; $age < 90; $age++){
+                    for($days = 1; $days < 36; $days++){
+                        for($i  = 1; $i < 30; $i++){
+                            $tripCost = $i * 500;
+
+                            $row = ImgRate::where([
+                                'img_product_id' => $product->id,
+                                'age' => $age,
+                                'days' => $days,
+                                'trip_cost' => $tripCost
+                            ])->first();
+
+                            if($row) continue;
+
+                            try{
+                                $imgToken = Token::where('provider', 'img')->first()->token;
+
+
+                                $res = Http::withToken($imgToken)
+                                            ->post('https://beta-services.imglobal.com/API/quotes', [
+                                                "ProducerNumber" => "542276",
+                                                "ProductCode" => $product->code,
+                                                "AppType" => $product->app_type,
+                                                "ResidencyState" => json_decode($product->states)[0] ? json_decode($product->states)[0] : 'MT',
+                                                "ResidencyCountry" => 'USA',
+                                                "TravelInfo" => [
+                                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                                    "EndDate" => Carbon::now()->addDays(10 + $days)->format('m/d/Y'),
+                                                    "Destinations" => [
+                                                        "USA"
+                                                    ]
+                                                ],
+                                                "PolicyInfo" => [
+                                                    "CurrencyCode" => "USD",
+                                                    "FulfillmentMethod" => "Online",
+                                                ],
+                                                "Families" => [[
+                                                    "Insureds" => [[
+                                                            "DateOfBirth" => Carbon::now()->subYears($age)->format('m/d/Y'),
+                                                            "TripCost" => $tripCost
+                                                    ]]
+                                                ]],
+                                            ]);
+
+                                $rate = $res->json()['totalPremium'];
+
+                                ImgRate::updateOrCreate([
+                                    'img_product_id' => $product->id,
+                                    'age' => $age,
+                                    'days' => $days,
+                                    'trip_cost' => $tripCost
+                                ],[
+                                    'rate' => $rate
+                                ]);
+                            }catch (\Exception $e){
+
+                            }
+                        }
+                    }
+                }
+            }
+        })->hourlyAt(59);
     }
 
     /**
