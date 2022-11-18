@@ -25,11 +25,14 @@ use App\Models\TiProduct;
 use App\Models\TiRate;
 
 use App\Models\GeoblueProduct;
-use App\Models\GeoblueRate;
+use App\Models\GeoblueTrekkerRate;
+use App\Models\GeoblueVoyagerRate;
+use App\Models\GeoblueTripProtectorRate;
 
 use App\Models\ImgProduct;
-use App\Models\ImgRate;
-
+use App\Models\ImgTripBaseRate;
+use App\Models\ImgTripDailyRate;
+use App\Models\ImgMedicalBaseRate;
 
 use App\Models\Token;
 
@@ -132,29 +135,94 @@ class QuoteController extends Controller
         $geoblueProducts = GeoblueProduct::all()->map(function($item) use($age, $tripCost, $days){
             $item['provider'] = 'Geo Blue';
             $item['price'] = 0;
-            $row = GeoblueRate::where([
-                'geoblue_product_id' => $item->id,
-                'age' => $age,
-                'days' => $days,
-                'trip_cost' => $tripCost
-            ])->first();
-            if($row) $item['price'] = $row->rate;
+            if($item->product == 'Trekker'){
+                $row = GeoblueTrekkerRate::where([
+                    ['geoblue_product_id', '=', $item->id],
+                    ['age_min', '<=', $age],
+                    ['age_max', '>=', $age]
+                ])->first();
+                if($row) $item['price'] = $row->rate;
+            }else if($item->product == 'Voyager'){
+                $row = GeoblueVoyagerRate::where([
+                    ['geoblue_product_id', '=', $item->id],
+                    ['age_min', '<=', $age],
+                    ['age_max', '>=', $age]
+                ])->first();
+                if($row) {
+                    if($days > $item->base_days){
+                        $item['price'] = $row->rate * ( $days + 1 );
+                    }else{
+                        $item['price'] = $row->rate * ( $item->base_days + 1 );
+                    }
+                };
+            }else if($item->product == 'TripProtector'){
+                $tripCost = 500 * (int)($tripCost/500);
+                $row = GeoblueTripProtectorRate::where([
+                    ['geoblue_product_id', '=', $item->id],
+                    ['age_min', '<=',  $age],
+                    ['age_max', '>=',  $age],
+                    ['trip_cost_min', '=', $tripCost]
+                ])->first();
+                if($row){
+                    if($days > $item->base_days){
+                        if($row){
+                            $item['price'] = $row->base_rate + $row->daily_rate * ($days - $item->base_days);
+                        } 
+                    }else{
+                        $item['price'] = $row->base_rate;
+                    }
+                }
+            }
 
             return $item;
         });
 
         $products = $products->concat($geoblueProducts);
         
+        // IMG Products
         $imgProducts = ImgProduct::all()->map(function($item) use($age, $tripCost, $days){
             $item['provider'] = 'IMG';
             $item['price'] = 0;
-            $row = ImgRate::where([
-                'img_product_id' => $item->id,
-                'age' => $age,
-                'days' => $days,
-                'trip_cost' => $tripCost
-            ])->first();
-            if($row) $item['price'] = $row->rate;
+            if($item['type'] == 'trip'){
+                $tripCost = 500 * (($tripCost / 500) + (($tripCost % 500) ? 1 : 0));
+                $row = ImgTripBaseRate::where([
+                    ['img_product_id', '=', $item->id],
+                    ['age_min', '<=',  $age],
+                    ['age_max', '>=',  $age],
+                    ['trip_cost', '=', $tripCost]
+                ])->first();
+                if($row){
+                    $baseRate = $row->rate;
+                    if($days > $item->base_days){
+                        $row = ImgTripDailyRate::where([
+                            ['img_product_id', '=', $item->id],
+                            ['age_min', '<=',  $age],
+                            ['age_max', '>=',  $age],
+                        ])->first();
+                        if($row){
+                            $dailyRate = $row->rate;
+                            $item['price'] = $baseRate + $dailyRate * ($days - $item->base_days);
+                        } 
+                    }else{
+                        $item['price'] = $baseRate;
+                    }
+                } 
+            }if($item['type'] == 'medical'){
+                $row = ImgMedicalBaseRate::where([
+                    ['img_product_id', '=', $item->id],
+                    ['age_min', '<=',  $age],
+                    ['age_max', '>=',  $age],
+                ])->first();
+                if($row){
+                    if($days > $item->base_days){
+                        if($row){
+                            $item['price'] = $row->base_rate + $row->daily_rate * ($days - $item->base_days);
+                        } 
+                    }else{
+                        $item['price'] = $row->base_rate;
+                    }
+                }
+            }
 
             return $item;
         });
@@ -164,6 +232,205 @@ class QuoteController extends Controller
         $products = $products->filter(fn ($item) => $item['price'] )->values();
 
         return response()->json($products);
+    }
+
+    public function testImg(){
+        
+        $responses = Http::pool(function(Pool $pool){
+            $arr = [];
+            $imgToken = Token::where('provider', 'img')->first()->token;
+            $product = ImgProduct::find(16);
+            for($i = 1; $i < 50; $i++){
+            // for($i = 361; $i < 370; $i++){
+                if($product->type == 'trip'){
+                    array_push($arr, 
+                        $pool->withToken($imgToken)
+                            ->post('https://beta-services.imglobal.com/API/quotes', [
+                                "ProducerNumber" => "542276",
+                                "ProductCode" => $product->code,
+                                "AppType" => $product->app_type,
+                                "ResidencyState" => $product->states_flag ? json_decode($product->states)[0] : 'AK',
+                                "ResidencyCountry" => 'USA',
+                                "TravelInfo" => [
+                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                    "EndDate" => Carbon::now()->addDays(10 + 20)->format('m/d/Y'),
+                                    "Destinations" => [
+                                        "USA"
+                                    ]
+                                ],
+                                "PolicyInfo" => [
+                                    "CurrencyCode" => "USD",
+                                    "FulfillmentMethod" => "Online",
+                                ],
+                                "Families" => [[
+                                    "Insureds" => [[
+                                            "DateOfBirth" => Carbon::now()->subYears($i)->format('m/d/Y'),
+                                            "TripCost" => 25000
+                                    ]]
+                                ]],
+                            ])
+                    );
+                }else if($product->type == 'medical'){
+                    if($product->country_type == 'inbound'){
+                        $destination = 'USA';
+                        $residence = 'ESP';
+                    }else if($product->country_type == 'international'){
+                        $destination = 'AUT';
+                        $residence = 'USA';
+                    }else{
+                        $destination = 'AUT';
+                        $residence = 'ESP';
+                    }
+                    array_push($arr, 
+                        $pool->withToken($imgToken)
+                            ->post('https://beta-services.imglobal.com/API/quotes', [
+                                "ProducerNumber" => "542276",
+                                "ProductCode" => $product->code,
+                                "AppType" => $product->app_type,
+                                "SignatureName" => 'Josh', // for VIC products
+                                "TravelInfo" => [
+                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                    "EndDate" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                                    "Destinations" => [$destination]
+                                ],
+                                "PolicyInfo" => [
+                                    "Deductible" => 0,
+                                    "MaximumLimit" => 50000,
+                                    "CurrencyCode" => "USD",
+                                    "FulfillmentMethod" => "Online",
+                                ],
+                                "Families" => [[
+                                    "Insureds" => [[
+                                        "TravelerType" => "Primary",
+                                        "DateOfBirth" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                                        "Citizenship" => $residence,
+                                        "Residence" => $residence
+                                    ]]
+                                ]],
+                            ])
+                    );
+
+                }
+            }
+            return $arr;
+        });
+
+        $res = collect($responses)->map(fn ($item) => $item->json());
+
+        // $res = $res->map(function($item, $key){
+        //     $baseRate = ImgTripBaseRate::where([['age_min', '<=', $key + 1], ['age_max', '>=', $key + 1], ['trip_cost', '=', 500]])->first()->rate;
+        //     $item['totalPremium'] = $item['totalPremium'] - $baseRate;
+        //     return $item;
+        // });
+
+        return response()->json($res);
+    }
+
+    public function testGeoblue(){
+        
+        $responses = Http::pool(function(Pool $pool){
+            $arr = [];
+            $product = GeoblueProduct::find(3);
+            for($i = 1; $i < 10; $i++){
+            // for($i = 361; $i < 370; $i++){
+                    array_push($arr, 
+                        $pool->withHeaders([
+                            'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                        ])->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                            "linkid" => "258965",
+                            "Product" => $product['name'],
+                            "Zip" => "12345",
+                            "State" => "MN",
+                            "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "ReturnDate" => Carbon::now()->addDays(10 + 30)->format('m/d/Y'),
+                            "TripCost" => 5000 * $i,
+                            "Destination" => 'COMOROS',
+                            "AgeList" => 30
+                        ])
+                    );
+            }
+            return $arr;
+        });
+
+        $res = collect($responses)->map(function ($item){
+                $item = $item->json();
+                // return $item;
+                return $item ? $item['Quotes'][0]['Rate'] : 0;
+            }
+        );
+        // $res = collect($responses)->map(fn ($item) => $item->json()['Quotes'][0]['Rate']);
+
+        // $res = $res->map(function($item, $key){
+        //     $baseRate = ImgTripBaseRate::where([['age_min', '<=', $key + 1], ['age_max', '>=', $key + 1], ['trip_cost', '=', 500]])->first()->rate;
+        //     $item['totalPremium'] = $item['totalPremium'] - $baseRate;
+        //     return $item;
+        // });
+
+        return response()->json($res);
+    }
+    
+    public function testTravelInsured(){
+        
+        $product = TiProduct::find(1);
+        $tiToken = Token::where('provider', 'Travel Insured')->first()->token;
+
+        $responses = Http::pool(function(Pool $pool) use($product, $tiToken){
+            $arr = [];
+            for($i = 0; $i < 50; $i++){
+            // for($i = 361; $i < 370; $i++){
+                $query = <<<GQL
+                query Quote(\$planQuoteRequest: PlanQuoteRequestInput) {
+                    quote(planQuoteRequest: \$planQuoteRequest) {
+                        pricing {
+                            premium
+                        }
+                    }
+                }
+                GQL;
+
+                $variablesArray = [
+                    "planQuoteRequest" => [
+                        "departureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                        "returnDate" => Carbon::now()->addDays(10 + 2)->format('m/d/Y'),
+                        "depositDate" => Carbon::now()->subDays(10)->format('m/d/Y'),
+                        "stateIsoCode" => 'HI',
+                        "countryIsoCode" => 'USA',
+                        "destinations" => [[ "countryIsoCode" => 'GB' ]],
+                        "primaryTraveler" => [
+                            "dateOfBirth" => Carbon::now()->subYears($i)->format('m/d/Y'),
+                            "tripCost" => 30000
+                        ],
+                        "additionalTravelers" => [],
+                        "products" => [
+                            [
+                                "productCode" => $product->code,
+                                "optionalCoverages" => [] 
+                            ]
+                        ]
+                    
+                    ]
+                ];
+
+                array_push($arr, 
+                    $pool->withHeaders([
+                        'Authorization' => 'Bearer ' . $tiToken
+                    ])->post('https://sandboxapi.travelinsured.com/graphql', [
+                        'query' => $query,
+                        'variables' => $variablesArray
+                    ])
+                );
+            }
+            return $arr;
+        });
+
+        $res = collect($responses)->map(function ($item){
+                $item = $item->json();
+                return $item;
+                // return $item ? $item['data']['quote'][0]['pricing']['premium'] : 0;
+            }
+        );
+
+        return response()->json($res);
     }
 
     public function purchaseTravelInsured(Request $request){

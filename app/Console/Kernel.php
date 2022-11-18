@@ -12,12 +12,19 @@ use Illuminate\Support\Facades\Log;
 use App\Models\TrawickProduct;
 use App\Models\TrawickDailyRate;
 use App\Models\TrawickTripcostRate;
+
 use App\Models\TiProduct;
 use App\Models\TiRate;
+
 use App\Models\GeoblueProduct;
-use App\Models\GeoblueRate;
+use App\Models\GeoblueVoyagerRate;
+use App\Models\GeoblueTripProtectorRate;
+
 use App\Models\ImgProduct;
-use App\Models\ImgRate;
+use App\Models\ImgTripBaseRate;
+use App\Models\ImgTripDailyRate;
+use App\Models\ImgMedicalBaseRate;
+use App\Models\ImgMedicalDailyRate;
 
 use Carbon\Carbon;
 
@@ -85,7 +92,7 @@ class Kernel extends ConsoleKernel
                 return response()->json($exception->getErrorDetails());
             }
 
-        })->everyThirtyMinutes();
+        })->everyFifteenMinutes();
 
         // Trawick TripCost Rate
         $schedule->call(function(){
@@ -112,7 +119,7 @@ class Kernel extends ConsoleKernel
                     continue;
                 }
             }
-        })->daily();
+        })->yearly();
 
         // Travel Insured Rate
         $schedule->call(function (){
@@ -171,138 +178,334 @@ class Kernel extends ConsoleKernel
                     continue;
                 }
             }
-        })->daily();
+        })->yearly();
 
-        // Geo Blue Rates
+        // IMG Trip Base
         $schedule->call(function (){
-            $products = GeoblueProduct::all();
-            $count = 0;
+            $products = ImgProduct::where('type', 'trip')->get();
+            $ages = [[1, 39], [40, 49], [50, 59], [60, 64], [65, 69], [70, 74], [75, 79], [80, 99]];
             foreach($products as $product){
-                for($age = 1; $age < 100; $age++){
-                    for($days = 1; $days < 90; $days++){
-                        for($i  = 1; $i < 40; $i++){
-                            $tripCost = $i * 500;
-
-                            $row = GeoblueRate::where([
-                                'geoblue_product_id' => $product->id,
-                                'age' => $age,
-                                'days' => $days,
-                                'trip_cost' => $tripCost
-                            ])->first();
-
-                            Log::info($row);
-
-                            if($row->id) continue;
-
-                            try{
-                                Log::info($row->id);
-
-                                $res = Http::withHeaders([
-                                        'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
-                                    ])
-                                    ->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
-                                        "linkid" => "258965",
-                                        "Product" => $product['name'],
-                                        "Zip" => "12345",
-                                        "State" => "PA",
-                                        "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
-                                        "ReturnDate" => Carbon::now()->addDays(10 + $days)->format('m/d/Y'),
-                                        "TripCost" => $tripCost,
-                                        "Destination" => 'AFGHANISTAN',
-                                        "AgeList" => $age
-                                    ]);
+                foreach($ages as $age){
+                    for($i = 1; $i < 52; $i++){
+                        $imgToken = Token::where('provider', 'img')->first()->token;
     
-                                $rate = $res->json()['Quotes'][0]['Rate'];
-                                
-                                Log::info($rate);
-                                
-                                GeoblueRate::updateOrCreate([
-                                    'geoblue_product_id' => $product->id,
-                                    'age' => $age,
-                                    'days' => $days,
-                                    'trip_cost' => $tripCost
-                                ],[
-                                    'rate' => $rate
-                                ]);
-
-                                $count++;
-
-                                if($count == 20) break 3;
-                            }catch (\Exception $e){
-
+                        Log:info('start => ' . $product->id . ':' . $age[0] . ':' . $age[1] . ':' . 500 * $i);
+    
+                        try{
+                            $res = Http::retry(3, 2000)->withToken($imgToken)
+                                ->post('https://beta-services.imglobal.com/API/quotes', [
+                                    "ProducerNumber" => "542276",
+                                    "ProductCode" => $product->code,
+                                    "AppType" => $product->app_type,
+                                    "ResidencyState" => $product->states_flag ? json_decode($product->states)[0] : 'AK',
+                                    "ResidencyCountry" => 'USA',
+                                    "TravelInfo" => [
+                                        "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                        "EndDate" => Carbon::now()->addDays(30)->format('m/d/Y'),
+                                        "Destinations" => [
+                                            "USA"
+                                        ]
+                                    ],
+                                    "PolicyInfo" => [
+                                        "CurrencyCode" => "USD",
+                                        "FulfillmentMethod" => "Online",
+                                    ],
+                                    "Families" => [[
+                                        "Insureds" => [[
+                                                "DateOfBirth" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
+                                                "TripCost" => 500 * $i
+                                        ]]
+                                    ]],
+                            ]);
+        
+                            $rate = $res->json()['totalPremium'];
+        
+                            if($rate){
+                                ImgTripBaseRate::updateOrCreate(
+                                    ['img_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1], 'trip_cost' => 500 * $i],
+                                    ['rate' => $rate]
+                                );
+                            }else{
+                                Log::info('notable => ' . $product->id . ':' . $age[0] . ':' . $age[1] . ':' . 500 * $i);
                             }
+                        }catch (\Exception $e){
+                            // continue;
                         }
                     }
                 }
             }
-        })->everyMinute();
-
-        // IMG Rates
+        })->yearly();
+        
+        // IMG Trip Daily
         $schedule->call(function (){
-            $products = ImgProduct::all();
+            $products = ImgProduct::where('type', 'trip')->get();
+            $ages = [[1, 39], [40, 49], [50, 59], [60, 64], [65, 69], [70, 74], [75, 79], [80, 99]];
             foreach($products as $product){
-                for($age = 1; $age < 90; $age++){
-                    for($days = 1; $days < 36; $days++){
-                        for($i  = 1; $i < 30; $i++){
-                            $tripCost = $i * 500;
+                foreach($ages as $age){
+                    $imgToken = Token::where('provider', 'img')->first()->token;
 
-                            $row = ImgRate::where([
-                                'img_product_id' => $product->id,
-                                'age' => $age,
-                                'days' => $days,
-                                'trip_cost' => $tripCost
-                            ])->first();
+                    try{
+                        $res = Http::retry(3, 2000)->withToken($imgToken)
+                            ->post('https://beta-services.imglobal.com/API/quotes', [
+                                "ProducerNumber" => "542276",
+                                "ProductCode" => $product->code,
+                                "AppType" => $product->app_type,
+                                "ResidencyState" => $product->states_flag ? json_decode($product->states)[0] : 'AK',
+                                "ResidencyCountry" => 'USA',
+                                "TravelInfo" => [
+                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                    "EndDate" => Carbon::now()->addDays(41)->format('m/d/Y'),
+                                    "Destinations" => ["USA"]
+                                ],
+                                "PolicyInfo" => [
+                                    "CurrencyCode" => "USD",
+                                    "FulfillmentMethod" => "Online",
+                                ],
+                                "Families" => [[
+                                    "Insureds" => [[
+                                            "DateOfBirth" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
+                                            "TripCost" => 500
+                                    ]]
+                                ]],
+                        ]);
+    
+                        $rate = $res->json()['totalPremium'];
 
-                            if($row) continue;
+                        $baseRate = ImgTripBaseRate::where(['img_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1], 'trip_cost' => 500])->first()->rate;
 
+                        $rate = $rate - $baseRate;
+    
+                        ImgTripDailyRate::updateOrCreate(
+                            ['img_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1]],
+                            ['rate' => $rate]
+                        );
+                    }catch (\Exception $e){
+                        // continue;
+                    }
+                }
+            }
+        })->yearly();
+        
+        // IMG Medical Base
+        $schedule->call(function (){
+            Log::info('start');
+            $products = ImgProduct::where('type', 'medical')->get();
+            
+            foreach($products as $product){
+                $ages = json_decode($product->ages);
+                $deductibles = json_decode($product->deductibles);
+                $policyMaxes = json_decode($product->policy_maxes);
+                foreach($ages as $age){
+                    foreach($deductibles as $deductible){
+                        foreach($policyMaxes as $policyMax){
+                            Log::info($product->id.':'.$product->name.':'.$age[1].':'.$deductible.':'.$policyMax);
+
+                            $imgToken = Token::where('provider', 'img')->first()->token;
+
+                            if($product->country_type == 'inbound'){
+                                $destination = 'USA';
+                                $residence = 'ESP';
+                            }else if($product->country_type == 'international'){
+                                $destination = 'AUT';
+                                $residence = 'USA';
+                            }
+        
                             try{
-                                $imgToken = Token::where('provider', 'img')->first()->token;
+                                $res = Http::retry(3, 2000)->withToken($imgToken)
+                                    ->post('https://beta-services.imglobal.com/API/quotes', [
+                                        "ProducerNumber" => "542276",
+                                        "ProductCode" => $product->code,
+                                        "AppType" => $product->app_type,
+                                        "SignatureName" => 'Josh', // for VIC products
+                                        "TravelInfo" => [
+                                            "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                            "EndDate" => Carbon::now()->addDays(12)->format('m/d/Y'),
+                                            "Destinations" => [$destination]
+                                        ],
+                                        "PolicyInfo" => [
+                                            "Deductible" => $deductible,
+                                            "MaximumLimit" => $policyMax,
+                                            "CurrencyCode" => "USD",
+                                            "FulfillmentMethod" => "Online",
+                                        ],
+                                        "Families" => [[
+                                            "Insureds" => [[
+                                                "TravelerType" => "Primary",
+                                                "DateOfBirth" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
+                                                "Citizenship" => $residence,
+                                                "Residence" => $residence
+                                            ]]
+                                        ]],
+                                    ]);
+            
+                                $baseRate = $res->json()['totalPremium'];
+    
+                                if($baseRate){
+                                    $dailyRate = null;
 
+                                    $res = Http::retry(3, 2000)->withToken($imgToken)
+                                    ->post('https://beta-services.imglobal.com/API/quotes', [
+                                        "ProducerNumber" => "542276",
+                                        "ProductCode" => $product->code,
+                                        "AppType" => $product->app_type,
+                                        "SignatureName" => 'Josh', // for VIC products
+                                        "TravelInfo" => [
+                                            "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                            "EndDate" => Carbon::now()->addDays(20 + $product->base_days)->format('m/d/Y'),
+                                            "Destinations" => [$destination]
+                                        ],
+                                        "PolicyInfo" => [
+                                            "Deductible" => $deductible,
+                                            "MaximumLimit" => $policyMax,
+                                            "CurrencyCode" => "USD",
+                                            "FulfillmentMethod" => "Online",
+                                        ],
+                                        "Families" => [[
+                                            "Insureds" => [[
+                                                "TravelerType" => "Primary",
+                                                "DateOfBirth" => Carbon::now()->subYears($age[1])->format('m/d/Y'),
+                                                "Citizenship" => $residence,
+                                                "Residence" => $residence
+                                            ]]
+                                        ]],
+                                    ]);
 
-                                $res = Http::withToken($imgToken)
-                                            ->post('https://beta-services.imglobal.com/API/quotes', [
-                                                "ProducerNumber" => "542276",
-                                                "ProductCode" => $product->code,
-                                                "AppType" => $product->app_type,
-                                                "ResidencyState" => json_decode($product->states)[0] ? json_decode($product->states)[0] : 'MT',
-                                                "ResidencyCountry" => 'USA',
-                                                "TravelInfo" => [
-                                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
-                                                    "EndDate" => Carbon::now()->addDays(10 + $days)->format('m/d/Y'),
-                                                    "Destinations" => [
-                                                        "USA"
-                                                    ]
-                                                ],
-                                                "PolicyInfo" => [
-                                                    "CurrencyCode" => "USD",
-                                                    "FulfillmentMethod" => "Online",
-                                                ],
-                                                "Families" => [[
-                                                    "Insureds" => [[
-                                                            "DateOfBirth" => Carbon::now()->subYears($age)->format('m/d/Y'),
-                                                            "TripCost" => $tripCost
-                                                    ]]
-                                                ]],
-                                            ]);
+                                    $rate = $res->json()['totalPremium'];
 
-                                $rate = $res->json()['totalPremium'];
+                                    if($rate){
+                                        $dailyRate = ($rate - $baseRate) / 10.00;
+                                    }
 
-                                ImgRate::updateOrCreate([
-                                    'img_product_id' => $product->id,
-                                    'age' => $age,
-                                    'days' => $days,
-                                    'trip_cost' => $tripCost
-                                ],[
-                                    'rate' => $rate
-                                ]);
+                                    ImgMedicalBaseRate::updateOrCreate(
+                                        ['img_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1], 'deductible' => $deductible, 'policy_max' => $policyMax],
+                                        ['base_rate' => $baseRate, 'daily_rate' => $dailyRate]
+                                    );
+                                }else{
+                                    
+                                }
                             }catch (\Exception $e){
-
+                                Log::info($e);
                             }
                         }
                     }
                 }
             }
-        })->hourlyAt(59);
+
+            Log::info('end');
+        })->yearly();
+
+        // Geo blue Voyager Rates
+        $schedule->call(function (){
+            Log::info('******* Geo Blue Voyager Started!!!');
+            $products = GeoblueProduct::where('product', 'Voyager')->get();
+            
+            foreach($products as $product){
+                $ages = json_decode($product->ages);
+                foreach($ages as $age){
+                    Log::info($product->id.':'.$product->name.':'.$age[1]);
+
+                    try{
+                        $res = Http::retry(3, 2000)->withHeaders([
+                            'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                        ])->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                            "linkid" => "258965",
+                            "Product" => $product['name'],
+                            "Zip" => "12345",
+                            "State" => "MN",
+                            "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "ReturnDate" => Carbon::now()->addDays(10 + 9)->format('m/d/Y'),
+                            "TripCost" => 1000,
+                            "Destination" => 'COMOROS',
+                            "AgeList" => $age[1]
+                        ])->json();
+    
+                        $rate = $res ? $res['Quotes'][0]['Rate'] : 0;
+
+                        if($rate){
+                            $dailyRate = $rate / 10.00;
+                        }
+
+                        GeoblueVoyagerRate::updateOrCreate(
+                            ['geoblue_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1]],
+                            ['rate' => $dailyRate]
+                        );
+                    }catch (\Exception $e){
+                        Log::info($e);
+                        continue;
+                    }
+                }
+            }
+
+            Log::info('******** Geo Blue Voyager Ended!!!');
+        })->yearly();
+
+        // Geo Blue TripProtector Rates
+        $schedule->call(function (){
+            Log::info('*** Geo Blue TripProtector Started ***');
+            $products = GeoblueProduct::where('product', 'TripProtecter')->get();
+            
+            foreach($products as $product){
+                $ages = json_decode($product->ages);
+                foreach($ages as $age){
+                    for($i = 0; $i < 10; $i++){
+                        Log::info($product->id . ':' . $product->name . ':' . $age[1] . ':' . $i * 500);
+                        try{
+                            $res = Http::retry(3, 2000)->withHeaders([
+                                'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                            ])->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                                "linkid" => "258965",
+                                "Product" => $product['name'],
+                                "Zip" => "12345",
+                                "State" => "MN",
+                                "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "ReturnDate" => Carbon::now()->addDays(10 + 2)->format('m/d/Y'),
+                                "TripCost" => 500 * $i,
+                                "Destination" => 'COMOROS',
+                                "AgeList" => $age[1]
+                            ])->json();
+        
+                            $baseRate = $res ? $res['Quotes'][0]['Rate'] : 0;
+
+                            if($baseRate){
+                                $dailyRate = 0;
+
+                                $res = Http::retry(3, 2000)->withHeaders([
+                                    'api_key' => 'p2gsfndkfqnbx5ra62vqdfdzptsyx5vcxsrytc79nkc2bmfnn7za3y9tbqjs6zdadjdbw8jkq72xusuk2qdf6y4x56ew2fh6ey569ehd77fzjahptfrz68nahk5wuuxx'
+                                ])->post('https://individualsalesapi-staging.betahth.com/individualsales/getquote', [
+                                    "linkid" => "258965",
+                                    "Product" => $product['name'],
+                                    "Zip" => "12345",
+                                    "State" => "MN",
+                                    "DepartureDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                    "ReturnDate" => Carbon::now()->addDays(20 + $product->base_days)->format('m/d/Y'),
+                                    "TripCost" => 500 * $i,
+                                    "Destination" => 'COMOROS',
+                                    "AgeList" => $age[1]
+                                ])->json();
+
+                                $rate = $res ? $res['Quotes'][0]['Rate'] : 0;
+
+                                if($rate){
+                                    $dailyRate = ($rate - $baseRate) / 10.00;
+                                }
+
+                                GeoblueTripProtectorRate::updateOrCreate(
+                                    ['geoblue_product_id' => $product->id, 'age_min' => $age[0], 'age_max' => $age[1], 'trip_cost_min' => 500 * $i],
+                                    ['base_rate' => $baseRate, 'daily_rate' => $dailyRate]
+                                );
+                            }else{
+                                
+                            }
+                        }catch (\Exception $e){
+                            Log::info($e);
+                        }
+                    }
+                }
+            }
+
+            Log::info('*** Geo Blue TripProtector Ended ***');
+        })->yearly();
+
     }
 
     /**
