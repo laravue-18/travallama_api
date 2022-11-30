@@ -25,7 +25,7 @@ use App\Models\TiProduct;
 use App\Models\TiRate;
 
 use App\Models\GeoblueProduct;
-use App\Models\GeoblueTrekkerRate;
+use App\Models\GeoblueTrekkerRate; 
 use App\Models\GeoblueVoyagerRate;
 use App\Models\GeoblueTripProtectorRate;
 
@@ -180,7 +180,15 @@ class QuoteController extends Controller
         $products = $products->concat($geoblueProducts);
         
         // IMG Products
-        $imgProducts = ImgProduct::all()->map(function($item) use($age, $tripCost, $days){
+        $imgProducts = ImgProduct::all()->filter(function($product, $key) use($request){
+            $states = json_decode($product->states);
+            if($product->states_flag){
+                return in_array($request['state'], $states);
+            }else{
+                return !in_array($request['state'], $states);
+            }
+        });
+        $imgProducts = $imgProducts->map(function($item) use($age, $tripCost, $days){
             $item['provider'] = 'IMG';
             $item['price'] = 0;
             if($item['type'] == 'trip'){
@@ -232,6 +240,160 @@ class QuoteController extends Controller
         $products = $products->filter(fn ($item) => $item['price'] )->values();
 
         return response()->json($products);
+    }
+
+    public function purchase(Request $request){
+        if($request['provider'] == "IMG"){
+            $product = ImgProduct::find($request['id']);
+
+            $payload = [
+                "ProducerNumber" => "542276",
+                "ProductCode" => $product->code,
+                "AppType" => $product->app_type,
+                "signatureName" => "John Raymond",
+                "ResidencyState" => $request['state'],
+                "ResidencyCountry" => $request['country'],
+                "TravelInfo" => [
+                    "StartDate" => date_format(date_create($request['startDate']), "m/d/Y"),
+                    "EndDate" => date_format(date_create($request['endDate']), "m/d/Y"),
+                    "Destinations" => [$request['destination']],
+                    "InitialPaymentDate" => date_format(date_create($request['depositDate']), "m/d/Y")
+                ],
+                "PolicyInfo" => [
+                    "CurrencyCode" => "USD",
+                    "FulfillmentMethod" => "Online",
+                ],
+                "Families" => [[
+                    "Insureds" => [[
+                        "FirstName" => $request['travelers'][0]['firstName'],
+                        "LastName" => $request['travelers'][0]['lastName'],
+                        "Email" => $request['contact']['email'],
+                        "DateOfBirth" => date_format(date_create($request['travelers'][0]['birthday']), "m/d/Y"),
+                        "TripCost" => $request['travelers'][0]['tripCost'],
+                    ]]
+                ]],
+                "Contacts" => [
+                    [
+                        "ContactInfoType" => "Billing",
+                        "CareOfName" => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                        "Address" => $request['contact']['address'],
+                        "Address2" => $request['contact']['address2'],
+                        "City" => $request['contact']['city'],
+                        "CountyRegion" => $request['contact']['county'],
+                        "StateProvince" => $request['state'],
+                        "Country" => $request['country'],
+                        "PostalCode" => $request['contact']['postalCode'],
+                        "Phone" => $request['contact']['phone'],
+                        "Email" => $request['contact']['email']
+                    ],
+                    [
+                        "ContactInfoType" => "Residence",
+                        "CareOfName" => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                        "Address" => $request['contact']['address'],
+                        "Address2" => $request['contact']['address2'],
+                        "City" => $request['contact']['city'],
+                        "CountyRegion" => $request['contact']['county'],
+                        "StateProvince" => $request['state'],
+                        "Country" => $request['country'],
+                        "PostalCode" => $request['contact']['postalCode'],
+                        "Phone" => $request['contact']['phone'],
+                        "Email" => $request['contact']['email']
+                    ]
+                ],
+                "PaymentInfo" => [
+                    "PaymentType" => $request['payment']['paymentType'],
+                    "NameOnAccount" => $request['payment']['nameOnAccount'],
+                    "CreditCardNumber" => $request['payment']['cardNumber'],
+                    "CardExpire" => $request['payment']['cardExpire'],
+                    "CardCVV" => $request['payment']['cardCVV']
+                ]
+            ];
+    
+            $token = Token::where('provider', 'img')->first()->token;
+    
+            $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/purchases', $payload);
+    
+            return response()->json($response->json());
+        }
+    }
+
+    public function testTrawick(){
+        $responses = Http::pool(function(Pool $pool){
+            $arr = [];
+            $product = TrawickProduct::find(1);
+            $country = $product->country_type == 'inbound' ? 'AF' : '' ;
+            $destination = $product->country_type == 'inbound' ? 'US' : '' ;
+            for($i = 0; $i < 50; $i++){
+            // for($i = 361; $i < 370; $i++){
+                if(true){
+                    array_push($arr, 
+                        $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+                            "product" => $product->product_id,
+                            "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "term_date" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                            "country" => $country,
+                            // "home_state" => "AK", 
+                            "destination" => $destination,
+                            "dob1" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                            'deductible' => 5000,
+                            'policy_max' => 1000000,
+                            "agent_id" => 14695
+                        ])
+                    );
+                }else if($product->type == 'medical'){
+                    if($product->country_type == 'inbound'){
+                        $destination = 'USA';
+                        $residence = 'ESP';
+                    }else if($product->country_type == 'international'){
+                        $destination = 'AUT';
+                        $residence = 'USA';
+                    }else{
+                        $destination = 'AUT';
+                        $residence = 'ESP';
+                    }
+                    array_push($arr, 
+                        $pool->withToken($imgToken)
+                            ->post('https://beta-services.imglobal.com/API/quotes', [
+                                "ProducerNumber" => "542276",
+                                "ProductCode" => $product->code,
+                                "AppType" => $product->app_type,
+                                "SignatureName" => 'Josh', // for VIC products
+                                "TravelInfo" => [
+                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                    "EndDate" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                                    "Destinations" => [$destination]
+                                ],
+                                "PolicyInfo" => [
+                                    "Deductible" => 0,
+                                    "MaximumLimit" => 50000,
+                                    "CurrencyCode" => "USD",
+                                    "FulfillmentMethod" => "Online",
+                                ],
+                                "Families" => [[
+                                    "Insureds" => [[
+                                        "TravelerType" => "Primary",
+                                        "DateOfBirth" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                                        "Citizenship" => $residence,
+                                        "Residence" => $residence
+                                    ]]
+                                ]],
+                            ])
+                    );
+
+                }
+            }
+            return $arr;
+        });
+
+        $res = collect($responses)->map(fn ($item) => $item->json()['TotalPrice']);
+
+        // $res = $res->map(function($item, $key){
+        //     $baseRate = ImgTripBaseRate::where([['age_min', '<=', $key + 1], ['age_max', '>=', $key + 1], ['trip_cost', '=', 500]])->first()->rate;
+        //     $item['totalPremium'] = $item['totalPremium'] - $baseRate;
+        //     return $item;
+        // });
+
+        return response()->json($res);
     }
 
     public function testImg(){
