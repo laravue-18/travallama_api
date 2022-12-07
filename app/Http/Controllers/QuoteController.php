@@ -4,12 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 
-use GraphQL\Client;
-use GraphQL\Exception\QueryError;
-use GraphQL\Query;
-use GraphQL\Mutation;
-use GraphQL\Variable;
-
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 
@@ -35,6 +29,10 @@ use App\Models\ImgTripDailyRate;
 use App\Models\ImgMedicalBaseRate;
 
 use App\Models\Token;
+use App\Models\Order;
+use App\Models\Option;
+
+use App\Models\Country;
 
 use Carbon\Carbon;
 
@@ -182,10 +180,18 @@ class QuoteController extends Controller
         // IMG Products
         $imgProducts = ImgProduct::all()->filter(function($product, $key) use($request){
             $states = json_decode($product->states);
-            if($product->states_flag){
-                return in_array($request['state'], $states);
+            if($product->type == 'trip'){
+                if($product->states_flag){
+                    return in_array($request['state'], $states);
+                }else{
+                    return !in_array($request['state'], $states);
+                }
             }else{
-                return !in_array($request['state'], $states);
+                if($product->country_type == 'inbound'){
+                    return $request['destination'] == 'USA';
+                }else{
+                    return $request['destination'] != 'USA';
+                }
             }
         });
         $imgProducts = $imgProducts->map(function($item) use($age, $tripCost, $days){
@@ -242,8 +248,331 @@ class QuoteController extends Controller
         return response()->json($products);
     }
 
+    public function show(Request $request){
+        $product = null;
+        $age = Carbon::createFromDate($request['birthday'])->age;
+        $date1 = Carbon::createMidnightDate($request['startDate']);
+        $date2 = Carbon::createMidnightDate($request['endDate']);
+        $days = $date1->diffInDays($date2);
+        $tripCost = $request['tripCost'];
+        
+        switch($request['provider']){
+            case 'Trawick':
+                $product = TrawickProduct::find($request['id']);
+                if($product['rate_type'] == 'daily'){
+                    $daily_rate = TrawickDailyRate::where([
+                        ['trawick_product_id', '=', $product->id],
+                        ['age_min', '<', $age ],
+                        ['age_max', '>', $age ]
+                    ])->first()->daily_rate;
+    
+                    $product['price'] = $daily_rate * $days;
+                }else if($product['rate_type'] == 'trip_cost'){
+                    $rate = TrawickTripcostRate::where([
+                        ['trawick_product_id', '=', $product->id],
+                        ['age_min', '<', $age ],
+                        ['age_max', '>', $age ],
+                        ['cost_min', '<=', $tripCost],
+                        ['cost_max', '>=', $tripCost]
+                    ])->first();
+    
+                    if($rate) $product['price'] = $rate->rate;
+                }else if($product['rate_type'] == 'annual'){
+                    $rate = TrawickAnnualRate::where('trawick_product_id', $product->id)->first();
+                    if($rate) $product['price'] = $rate->rate;
+                }else if($product['rate_type'] == 'treker'){
+                    $row = TrawickTrekerRate::where('trawick_product_id', $product->id)->first();
+                    if($row) $product['price'] = ( $days > 30 ? $row->rate2 : $row->rate1 ) + 30;
+                }
+                $options = Option::where(["provider" => "Trawick", "product_id" => $request['id']])->get();
+                $options = $options->map(function($option){
+                    $option['items'] = json_decode($option['items']);
+                    return $option;
+                } );
+                $product['options'] = $options;
+
+                break;
+            case 'Travel Insured':
+                $product = TiProduct::find($request['id']);
+                $row = TiRate::where([
+                    ['ti_product_id', '=', $product->id],
+                    ['age_min', '<=', $age ],
+                    ['age_max', '>=', $age ],
+                    ['trip_cost_min', '<=', $tripCost],
+                    ['trip_cost_max', '>=', $tripCost]
+                ])->first();
+                if($row) $product['price'] = $row->rate;
+
+                break;
+            case 'Geo Blue':
+                $product = GeoblueProduct::find($request['id']);
+
+                if($product->product == 'Trekker'){
+                    $row = GeoblueTrekkerRate::where([
+                        ['geoblue_product_id', '=', $product->id],
+                        ['age_min', '<=', $age],
+                        ['age_max', '>=', $age]
+                    ])->first();
+                    if($row) $product['price'] = $row->rate;
+                }else if($product->product == 'Voyager'){
+                    $row = GeoblueVoyagerRate::where([
+                        ['geoblue_product_id', '=', $product->id],
+                        ['age_min', '<=', $age],
+                        ['age_max', '>=', $age]
+                    ])->first();
+                    if($row) {
+                        if($days > $product->base_days){
+                            $product['price'] = $row->rate * ( $days + 1 );
+                        }else{
+                            $product['price'] = $row->rate * ( $product->base_days + 1 );
+                        }
+                    };
+                }else if($product->product == 'TripProtector'){
+                    $tripCost = 500 * (int)($tripCost/500);
+                    $row = GeoblueTripProtectorRate::where([
+                        ['geoblue_product_id', '=', $product->id],
+                        ['age_min', '<=',  $age],
+                        ['age_max', '>=',  $age],
+                        ['trip_cost_min', '=', $tripCost]
+                    ])->first();
+                    if($row){
+                        if($days > $product->base_days){
+                            if($row){
+                                $product['price'] = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
+                            } 
+                        }else{
+                            $product['price'] = $row->base_rate;
+                        }
+                    }
+                }
+                break;
+            case 'IMG':
+                $product = ImgProduct::find($request['id']);
+
+                if($product['type'] == 'trip'){
+                    $tripCost = 500 * (($tripCost / 500) + (($tripCost % 500) ? 1 : 0));
+                    $row = ImgTripBaseRate::where([
+                        ['img_product_id', '=', $product->id],
+                        ['age_min', '<=',  $age],
+                        ['age_max', '>=',  $age],
+                        ['trip_cost', '=', $tripCost]
+                    ])->first();
+                    if($row){
+                        $baseRate = $row->rate;
+                        if($days > $product->base_days){
+                            $row = ImgTripDailyRate::where([
+                                ['img_product_id', '=', $product->id],
+                                ['age_min', '<=',  $age],
+                                ['age_max', '>=',  $age],
+                            ])->first();
+                            if($row){
+                                $dailyRate = $row->rate;
+                                $product['price'] = $baseRate + $dailyRate * ($days - $product->base_days);
+                            } 
+                        }else{
+                            $product['price'] = $baseRate;
+                        }
+                    } 
+                }if($product['type'] == 'medical'){
+                    $row = ImgMedicalBaseRate::where([
+                        ['img_product_id', '=', $product->id],
+                        ['age_min', '<=',  $age],
+                        ['age_max', '>=',  $age],
+                    ])->first();
+                    if($row){
+                        if($days > $product->base_days){
+                            if($row){
+                                $product['price'] = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
+                            } 
+                        }else{
+                            $product['price'] = $row->base_rate;
+                        }
+                    }
+                }
+                break;
+        }
+
+
+        return response()->json($product);
+    }
+
     public function purchase(Request $request){
-        if($request['provider'] == "IMG"){
+        $input = $request->all();
+        $input['startDate'] = (new Carbon($input['startDate']));
+        $input['endDate'] = (new Carbon($input['endDate']));
+        $input['depositDate'] = (new Carbon($input['depositDate']));
+        $input['travelers'][0]['birthday'] = (new Carbon($input['travelers'][0]['birthday']));
+
+        if($request['provider'] == "Trawick"){
+            $product = TrawickProduct::find($request['id']);
+            $country = Country::where('iso3', $request['country'])->first()->iso;
+            $destination = Country::where('iso3', $request['destination'])->first()->iso;
+
+            $payload = [
+                "product" => $product->product_id,
+                "eff_date" => $request['startDate'],
+                "term_date" => $request['endDate'],
+                "country" => $country,
+                "destination" => $destination,
+                "policy_max" => 50000,
+                "deductible" => 250,
+                "dob1" => $request['travelers'][0]['birthday'],
+                "t1First" => $request['travelers'][0]['firstName'],
+                "t1Middle" => "",
+                "t1Last" => $request['travelers'][0]['lastName'],
+                "t1Gender" => ['Male', 'Female'][$request['travelers'][0]['gender']],
+                "mainEmail" => $request['contact']['email'],
+                "phone" => $request['contact']['phone'],
+                "street" => $request['contact']['address'],
+                "city" => $request['contact']['city'],
+                "state" => $request['state'], //$request['residenceState'],
+                "zip" => $request['contact']['postalCode'],
+                "homecountry" => $country, 
+                "cc_name" => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                "cc_street" => $request['contact']['address'],
+                "cc_city" => $request['contact']['city'],
+                "cc_statecode" => $request['state'],
+                "cc_postalcode" => $request['contact']['postalCode'],
+                "cc_country" => $country,
+                "cc_number" => $request['payment']['cardNumber'],
+                "cc_month" => date("m", strtotime($request['payment']['cardExpire'])),
+                "cc_year" => date("Y", strtotime($request['payment']['cardExpire'])),
+                "cc_cvv" => $request['payment']['cardCVV'] ,
+                "agent_id" => 14695,
+                "completeOrder" => true,
+            ];
+    
+            try{
+                $response = Http::retry(3, 2000)->retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload)->json();
+
+                if(in_array($response['OrderStatusCode'], [1, 2])){
+                    Order::create([
+                        'provider' => $request['provider'],
+                        'product_id' => $request['id'],
+                        'traveler' => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                        'birthday' => $input['travelers'][0]['birthday'],
+                        'email' => $request['contact']['email'],
+                        "phone" => $request['contact']['phone'],
+                        "startDate" => $input['startDate'],
+                        "endDate" => $input['endDate'],
+                        "destination" => $destination,
+                        "country" => $country,
+                        "state" => $request['state'],
+                        "price" => $request['price'],
+                        "data" => json_encode($response)
+                    ]);
+                }
+                
+                return response()->json($response['OrderStatusMessage']);
+            }catch (QueryError $exception) {
+                return response()->json($exception->getErrorDetails());
+            }
+    
+        }else if($request['provider'] == "Travel Insured"){
+            $product = TiProduct::find($request['id']);
+
+            $tiToken = Token::where('provider', 'Travel Insured')->first()->token;
+
+            $query = <<<GQL
+            mutation Purchase(\$purchaseRequest: PurchaseRequestInput) {
+                purchase(purchaseRequest: \$purchaseRequest) {
+                  eobDownloadLink
+                  planGuid
+                  planNumber
+                  cobDownloadLink
+                }
+              }
+            GQL;
+    
+            $variablesArray = [
+                "purchaseRequest" => [
+                    "productCode" => $product->code,
+                    "departureDate" => Carbon::createFromDate($request['startDate'])->format('m/d/Y'),
+                    "returnDate" => Carbon::createFromDate($request['endDate'])->format('m/d/Y'),
+                    "depositDate" => Carbon::createFromDate($request['depositDate'])->format('m/d/Y'),
+                    "destinations" => [[ "countryIsoCode" => $request['destination']]],
+                    "primaryTraveler" => [
+                        "dateOfBirth" => Carbon::createFromDate($request['travelers'][0]['birthday'])->format('m/d/Y'),
+                        "tripCost" => (float)$request['travelers'][0]['tripCost'],
+                        "firstName" => $request['travelers'][0]['firstName'],
+                        "lastName" => $request['travelers'][0]['lastName'],
+                        "email" => $request['contact']['email'],
+                        "phoneNumbers" => [$request['contact']['phone']],
+                        "address" => [
+                            "addressLine1" => $request['contact']['address'],
+                            "city" => $request['contact']['city'],
+                            "stateIsoCode" => $request['state'],
+                            "countryIsoCode" => $request['country'],
+                            "zipCode" => $request['contact']['postalCode'],
+                            "zipCodePlus4" => $request['contact']['postalCode']
+                        ],
+                        "beneficiaries" => []
+                    ],
+                    "additionalTravelers" => [],
+                    "optionalCoverages" => [
+                        // [
+                        //   "productCoverageCode" => "OF",
+                        //   "productCoverageLimitAmount" => 1000000
+                        // ]
+                    ],
+                    "payments" => [[
+                        "amount" => (float)$request['price'],
+                        "creditCard" => [
+                            "cardNumber" => $request['payment']['cardNumber'],
+                            "expirationMonth" => (int)date("m", strtotime($request['payment']['cardExpire'])),
+                            "expirationYear" => (int)date("Y", strtotime($request['payment']['cardExpire'])),
+                            "cardVerificationValue" => $request['payment']['cardCVV'],
+                            "firstName" =>  $request['travelers'][0]['firstName'],
+                            "middleName" => "",
+                            "lastName" => $request['travelers'][0]['lastName'],
+                            "addressLine1" => $request['contact']['address'],
+                            "city" => $request['contact']['city'],
+                            "stateIsoCode" => $request['state'],
+                            "zipCode" => $request['contact']['postalCode'],
+                            "countryIsoCode" =>  $request['country']
+                        ]
+                    ]]
+                ]
+            ];
+
+            try {
+                $response = Http::retry(3, 2000)->withHeaders([
+                    'Authorization' => 'Bearer ' . $tiToken
+                ])->post('https://sandboxapi.travelinsured.com/graphql', [
+                    'query' => $query,
+                    'variables' => $variablesArray
+                ])->json();
+
+                if($response['data']['purchase']){
+                    Order::create([
+                        'provider' => $request['provider'],
+                        'product_id' => $request['id'],
+                        'traveler' => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                        'birthday' => $input['travelers'][0]['birthday'],
+                        'email' => $request['contact']['email'],
+                        "phone" => $request['contact']['phone'],
+                        "startDate" => $input['startDate'],
+                        "endDate" => $input['endDate'],
+                        "destination" => $input['destination'],
+                        "country" => $input['country'],
+                        "state" => $request['state'],
+                        "price" => $request['price'],
+                        "data" => json_encode($response)
+                    ]);
+    
+                    return response()->json("Order processed Successfully!");
+                }else{
+                    return response()->json(collect($response['errors'])->map(fn ($item) => $item['message']));
+                }
+
+                return response()->json($response->json());
+            }
+            catch (QueryError $exception) {
+                return response()->json($exception->getErrorDetails());
+            }
+        }else if($request['provider'] == "Geo Blue"){
+
+        }else if($request['provider'] == "IMG"){
             $product = ImgProduct::find($request['id']);
 
             $payload = [
@@ -311,7 +640,29 @@ class QuoteController extends Controller
     
             $token = Token::where('provider', 'img')->first()->token;
     
-            $response = Http::withToken($token)->post('https://beta-services.imglobal.com/API/purchases', $payload);
+            $response = Http::retry(3, 2000)->withToken($token)->post('https://beta-services.imglobal.com/API/purchases', $payload)->json();
+
+            if($response['errors'] == null){
+                Order::create([
+                    'provider' => $request['provider'],
+                    'product_id' => $request['id'],
+                    'traveler' => $request['travelers'][0]['firstName'] . " " . $request['travelers'][0]['lastName'],
+                    'birthday' => $input['travelers'][0]['birthday'],
+                    'email' => $request['contact']['email'],
+                    "phone" => $request['contact']['phone'],
+                    "startDate" => $input['startDate'],
+                    "endDate" => $input['endDate'],
+                    "destination" => $input['destination'],
+                    "country" => $input['country'],
+                    "state" => $request['state'],
+                    "price" => $request['price'],
+                    "data" => json_encode($response)
+                ]);
+
+                return response()->json("Order processed Successfully!");
+            }else{
+                return response()->json("Order didn't processed Successfully!");
+            }
     
             return response()->json($response->json());
         }
