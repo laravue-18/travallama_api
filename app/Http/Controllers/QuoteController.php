@@ -14,6 +14,9 @@ use App\Models\TrawickDailyRate;
 use App\Models\TrawickTripcostRate;
 use App\Models\TrawickAnnualRate;
 use App\Models\TrawickTrekerRate;
+use App\Models\TrawickTripDelayRate;
+use App\Models\TrawickAddRate;
+use App\Models\TrawickGpr;
 
 use App\Models\TiProduct;
 use App\Models\TiRate;
@@ -33,6 +36,7 @@ use App\Models\Order;
 use App\Models\Option;
 
 use App\Models\Country;
+use App\Models\State;
 
 use Carbon\Carbon;
 
@@ -56,26 +60,19 @@ class QuoteController extends Controller
         });
 
         $trawickProducts = $trawickProducts->filter(function ($item, $key) use($request){
-            if($item['country_type'] == 'inbound'){
-                if($request['destination'] == 'US'){
+            if($item['type'] == 'medical'){
+                if($item['country_type'] == 'inbound' && $request['destination'] == 'USA' && $request['destination'] != $request['country']) 
                     return true;
-                }else{
-                    return false;
-                }
-            }else if($item['country_type'] == 'international'){
-                if($request['destination'] != 'USA' && ($request['country'] != 'USA') && ($request['country'] != $request['destination'])){
+                else if($item['country_type'] == 'international' && $request['destination'] != 'USA' && ($request['country'] != 'USA') && ($request['country'] != $request['destination']))
+                        return true;
+                else if($item['country_type'] == 'outbound' && $request['country'] == 'USA' && $request['country'] != $request['destination'])
                     return true;
-                }else{
+                else
                     return false;
-                }
-            }else if($item['country_type'] == 'outbound'){
-                if($request['country'] == 'USA' && $request['country'] != $request['destination']){
-                    return true;
-                }else{
-                    return false;
-                }
-            }else{
+            }else if($item['type'] == 'trip' && $request['country'] == 'USA'){
                 return true;
+            }else{
+                return false;
             }
         });
 
@@ -243,32 +240,100 @@ class QuoteController extends Controller
 
         $products = $products->concat($imgProducts);
 
-        $products = $products->filter(fn ($item) => $item['price'] )->values();
+        // $products = $products->filter(fn ($item) => $item['price'] )->values();
 
         return response()->json($products);
     }
 
-    public function show(Request $request){
+    public function getProduct(Request $request){
         $product = null;
         $age = Carbon::createFromDate($request['birthday'])->age;
         $date1 = Carbon::createMidnightDate($request['startDate']);
         $date2 = Carbon::createMidnightDate($request['endDate']);
-        $days = $date1->diffInDays($date2);
+        $days = $date1->diffInDays($date2) + 1;
         $tripCost = $request['tripCost'];
         
         switch($request['provider']){
             case 'Trawick':
                 $product = TrawickProduct::find($request['id']);
-                if($product['rate_type'] == 'daily'){
+
+                $options = Option::where(["provider" => "Trawick", "product_id" => $request['id']])->get();
+                $options = $options->map(function($option){
+                    $option['items'] = json_decode($option['items']);
+                    return $option;
+                } );
+                $product['options'] = $options;
+
+                break;
+            case 'Travel Insured':
+                $product = TiProduct::find($request['id']);
+
+                break;
+            case 'Geo Blue':
+                $product = GeoblueProduct::find($request['id']);
+
+                break;
+            case 'IMG':
+                $product = ImgProduct::find($request['id']);
+
+                break;
+        }
+
+
+        return response()->json($product);
+    }
+    
+    public function getPrice(Request $request){
+        $product = null;
+        $age = Carbon::createFromDate($request['birthday'])->age;
+        $date1 = Carbon::createMidnightDate($request['startDate']);
+        $date2 = Carbon::createMidnightDate($request['endDate']);
+        $days = $date1->diffInDays($date2) + 1;
+        $tripCost = $request['travelers'][0]['tripCost'];
+        $price = 0;
+        
+        switch($request['provider']){
+            case 'Trawick':
+                $product = TrawickProduct::find($request['id']);
+                if($product['type'] == 'medical'){
                     $daily_rate = TrawickDailyRate::where([
                         ['trawick_product_id', '=', $product->id],
                         ['age_min', '<', $age ],
-                        ['age_max', '>', $age ]
+                        ['age_max', '>', $age ],
+                        ['deductible', '=', $request['deductible']],
+                        ['policy_max', '=', $request['policy_max'] ]
                     ])->first()->daily_rate;
+
+                    $a = 1;
+
+                    if($request['home_country']) $a += 0.10;
+                    if($request['sports'] == 'yes' || $request['sports'] == 'class2') $a += 0.20;
+
+                    $daily_rate *= $a;
+
+                    if($request['add']){
+                        $add_rate = TrawickAddRate::where('coverage', $request['add'])->first()->rate;
+
+                        $daily_rate += $add_rate;
+                    }
     
-                    $product['price'] = $daily_rate * $days;
-                }else if($product['rate_type'] == 'trip_cost'){
-                    $rate = TrawickTripcostRate::where([
+                    $price = $daily_rate * $days;
+
+                    if($request['trip_delay']){
+                        $trip_delay_rate = TrawickTripDelayRate::where([
+                            // ['product_id', '=', $product->id],
+                            ['trip_delay_max', '=', $request['trip_delay']]
+                        ])->first()->rate;
+
+                        $price += $trip_delay_rate;
+                    }
+
+                    if($request['sports'] == 'class2'){
+                        $price += 26 * ( intdiv($days, 30) + ($days%30) ? 1 : 0);
+                    }
+                    
+                }else if($product['type'] == 'trip' && $product['rate_type'] == 'trip_a'){
+                    $row = TrawickTripcostRate::where([
                         ['trawick_product_id', '=', $product->id],
                         ['age_min', '<', $age ],
                         ['age_max', '>', $age ],
@@ -276,20 +341,48 @@ class QuoteController extends Controller
                         ['cost_max', '>=', $tripCost]
                     ])->first();
     
-                    if($rate) $product['price'] = $rate->rate;
+                    if($row) {
+                        $price = in_array($request['state'], ['AK', 'MO', 'PA']) ? $row->rate1 : $row->rate2;
+                        if($days > 30) $price += ( 4 * ($days - 30) );
+                        if($request['cancelForAny'] == 'yes'){
+                            $price *= 1.7;
+                        }
+                        if($request['CDW'] == 'yes'){
+                            $price += (in_array($request['state'], ['AK', 'MO', 'PA']) ? 11 : 8) * $days;
+                        }
+                    }
+                }else if($product['type'] == 'trip' && $product['rate_type'] == 'trip_b'){
+                    $tripCost = max($request['tripCost'], $age > 35 ? 2000 : ($age > 21 ? 1500 : ($age > 8 ? 1000 : 750)));
+
+                    $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+                    $age = max(array_filter($ages, fn ($i) => $age >= $i));
+
+                    $destination = Country::where('iso3', $request['destination'])->first()->area1;
+
+                    $state = in_array($request['state'], ['RI', 'MO', 'AK']) ? 'RI' : (in_array($request['state'], ['PA', 'NH']) ? $request['state'] : 'WY');
+
+                    $row = TrawickGpr::where([
+                        'product_id' => $product->id,
+                        'age' => $age,
+                        'days' => $days,
+                        'destination' => $destination,
+                        'state' => $state,
+                        'flight_add' => $request['flight_add'],
+                        '24_add' => $request['24_add'],
+                        'CDW' => $request['CDW']
+                    ])->first();
+
+                    if($row){
+                        $price = $tripCost * $row->percent;
+                    } 
+
                 }else if($product['rate_type'] == 'annual'){
                     $rate = TrawickAnnualRate::where('trawick_product_id', $product->id)->first();
-                    if($rate) $product['price'] = $rate->rate;
+                    if($rate) $price = $rate->rate;
                 }else if($product['rate_type'] == 'treker'){
                     $row = TrawickTrekerRate::where('trawick_product_id', $product->id)->first();
-                    if($row) $product['price'] = ( $days > 30 ? $row->rate2 : $row->rate1 ) + 30;
+                    if($row) $price = ( $days > 30 ? $row->rate2 : $row->rate1 ) + 30;
                 }
-                $options = Option::where(["provider" => "Trawick", "product_id" => $request['id']])->get();
-                $options = $options->map(function($option){
-                    $option['items'] = json_decode($option['items']);
-                    return $option;
-                } );
-                $product['options'] = $options;
 
                 break;
             case 'Travel Insured':
@@ -301,7 +394,8 @@ class QuoteController extends Controller
                     ['trip_cost_min', '<=', $tripCost],
                     ['trip_cost_max', '>=', $tripCost]
                 ])->first();
-                if($row) $product['price'] = $row->rate;
+
+                if($row) $price = $row->rate;
 
                 break;
             case 'Geo Blue':
@@ -313,7 +407,7 @@ class QuoteController extends Controller
                         ['age_min', '<=', $age],
                         ['age_max', '>=', $age]
                     ])->first();
-                    if($row) $product['price'] = $row->rate;
+                    if($row) $price = $row->rate;
                 }else if($product->product == 'Voyager'){
                     $row = GeoblueVoyagerRate::where([
                         ['geoblue_product_id', '=', $product->id],
@@ -322,9 +416,9 @@ class QuoteController extends Controller
                     ])->first();
                     if($row) {
                         if($days > $product->base_days){
-                            $product['price'] = $row->rate * ( $days + 1 );
+                            $price = $row->rate * ( $days + 1 );
                         }else{
-                            $product['price'] = $row->rate * ( $product->base_days + 1 );
+                            $price = $row->rate * ( $product->base_days + 1 );
                         }
                     };
                 }else if($product->product == 'TripProtector'){
@@ -338,10 +432,10 @@ class QuoteController extends Controller
                     if($row){
                         if($days > $product->base_days){
                             if($row){
-                                $product['price'] = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
+                                $price = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
                             } 
                         }else{
-                            $product['price'] = $row->base_rate;
+                            $price = $row->base_rate;
                         }
                     }
                 }
@@ -367,10 +461,10 @@ class QuoteController extends Controller
                             ])->first();
                             if($row){
                                 $dailyRate = $row->rate;
-                                $product['price'] = $baseRate + $dailyRate * ($days - $product->base_days);
+                                $price = $baseRate + $dailyRate * ($days - $product->base_days);
                             } 
                         }else{
-                            $product['price'] = $baseRate;
+                            $price = $baseRate;
                         }
                     } 
                 }if($product['type'] == 'medical'){
@@ -382,10 +476,10 @@ class QuoteController extends Controller
                     if($row){
                         if($days > $product->base_days){
                             if($row){
-                                $product['price'] = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
+                                $price = $row->base_rate + $row->daily_rate * ($days - $product->base_days);
                             } 
                         }else{
-                            $product['price'] = $row->base_rate;
+                            $price = $row->base_rate;
                         }
                     }
                 }
@@ -393,7 +487,7 @@ class QuoteController extends Controller
         }
 
 
-        return response()->json($product);
+        return response()->json($price);
     }
 
     public function purchase(Request $request){
@@ -669,74 +763,101 @@ class QuoteController extends Controller
     }
 
     public function testTrawick(){
-        $responses = Http::pool(function(Pool $pool){
+        $countries = Country::all();
+        $states = State::where('country', 'USA')->get();
+
+        $responses = Http::pool(function(Pool $pool) use ($countries, $states){
             $arr = [];
-            $product = TrawickProduct::find(1);
-            $country = $product->country_type == 'inbound' ? 'AF' : '' ;
-            $destination = $product->country_type == 'inbound' ? 'US' : '' ;
-            for($i = 0; $i < 50; $i++){
-            // for($i = 361; $i < 370; $i++){
-                if(true){
+            $product = TrawickProduct::find(14);
+            
+            if($product->type == 'trip' && $product->rate_type == 'trip_b'){
+                foreach($states as $state){
+                // for($i = 0; $i < 100; $i++){
                     array_push($arr, 
                         $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
                             "product" => $product->product_id,
                             "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
-                            "term_date" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
-                            "country" => $country,
-                            // "home_state" => "AK", 
-                            "destination" => $destination,
-                            "dob1" => Carbon::now()->subYears(20)->format('m/d/Y'),
-                            'deductible' => 5000,
-                            'policy_max' => 1000000,
+                            "term_date" => Carbon::now()->addDays(10 + 20)->format('m/d/Y'),
+                            "dob1" => Carbon::now()->subYears(32)->format('m/d/Y'),
+                            "destination" => "NP",
+                            "country" => "US",
+                            'trip_cost_per_person' => 10000,
+                            "home_state" => $state->code, 
                             "agent_id" => 14695
                         ])
                     );
-                }else if($product->type == 'medical'){
-                    if($product->country_type == 'inbound'){
-                        $destination = 'USA';
-                        $residence = 'ESP';
-                    }else if($product->country_type == 'international'){
-                        $destination = 'AUT';
-                        $residence = 'USA';
-                    }else{
-                        $destination = 'AUT';
-                        $residence = 'ESP';
-                    }
-                    array_push($arr, 
-                        $pool->withToken($imgToken)
-                            ->post('https://beta-services.imglobal.com/API/quotes', [
-                                "ProducerNumber" => "542276",
-                                "ProductCode" => $product->code,
-                                "AppType" => $product->app_type,
-                                "SignatureName" => 'Josh', // for VIC products
-                                "TravelInfo" => [
-                                    "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
-                                    "EndDate" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
-                                    "Destinations" => [$destination]
-                                ],
-                                "PolicyInfo" => [
-                                    "Deductible" => 0,
-                                    "MaximumLimit" => 50000,
-                                    "CurrencyCode" => "USD",
-                                    "FulfillmentMethod" => "Online",
-                                ],
-                                "Families" => [[
-                                    "Insureds" => [[
-                                        "TravelerType" => "Primary",
-                                        "DateOfBirth" => Carbon::now()->subYears(20)->format('m/d/Y'),
-                                        "Citizenship" => $residence,
-                                        "Residence" => $residence
-                                    ]]
-                                ]],
+                }
+            }else{
+                $country = $product->country_type == 'inbound' ? 'AF' : '' ;
+                $destination = $product->country_type == 'inbound' ? 'US' : '' ;
+                for($i = 0; $i < 50; $i++){
+                // for($i = 361; $i < 370; $i++){
+                    if(true){
+                        array_push($arr, 
+                            $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                                "country" => $country,
+                                // "home_state" => "AK", 
+                                "destination" => $destination,
+                                "dob1" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                                'deductible' => 5000,
+                                'policy_max' => 1000000,
+                                "agent_id" => 14695
                             ])
-                    );
-
+                        );
+                    }else if($product->type == 'medical'){
+                        if($product->country_type == 'inbound'){
+                            $destination = 'USA';
+                            $residence = 'ESP';
+                        }else if($product->country_type == 'international'){
+                            $destination = 'AUT';
+                            $residence = 'USA';
+                        }else{
+                            $destination = 'AUT';
+                            $residence = 'ESP';
+                        }
+                        array_push($arr, 
+                            $pool->withToken($imgToken)
+                                ->post('https://beta-services.imglobal.com/API/quotes', [
+                                    "ProducerNumber" => "542276",
+                                    "ProductCode" => $product->code,
+                                    "AppType" => $product->app_type,
+                                    "SignatureName" => 'Josh', // for VIC products
+                                    "TravelInfo" => [
+                                        "StartDate" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                        "EndDate" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                                        "Destinations" => [$destination]
+                                    ],
+                                    "PolicyInfo" => [
+                                        "Deductible" => 0,
+                                        "MaximumLimit" => 50000,
+                                        "CurrencyCode" => "USD",
+                                        "FulfillmentMethod" => "Online",
+                                    ],
+                                    "Families" => [[
+                                        "Insureds" => [[
+                                            "TravelerType" => "Primary",
+                                            "DateOfBirth" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                                            "Citizenship" => $residence,
+                                            "Residence" => $residence
+                                        ]]
+                                    ]],
+                                ])
+                        );
+    
+                    }
                 }
             }
             return $arr;
         });
 
-        $res = collect($responses)->map(fn ($item) => $item->json()['TotalPrice']);
+        $res = collect($responses)->map(function($item, $key) use ($countries, $states){
+            $a['country'] = $states[$key]->name;
+            $a['price'] = $item->json()['TotalPrice'];
+            return $a;
+        } );
 
         // $res = $res->map(function($item, $key){
         //     $baseRate = ImgTripBaseRate::where([['age_min', '<=', $key + 1], ['age_max', '>=', $key + 1], ['trip_cost', '=', 500]])->first()->rate;

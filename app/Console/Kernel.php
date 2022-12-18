@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\TrawickProduct;
 use App\Models\TrawickDailyRate;
 use App\Models\TrawickTripcostRate;
+use App\Models\TrawickGpr;
 
 use App\Models\TiProduct;
 use App\Models\TiRate;
@@ -35,6 +36,7 @@ use GraphQL\Mutation;
 use GraphQL\Variable;
 
 use App\Models\Token;
+use App\Models\Country;
 
 class Kernel extends ConsoleKernel
 {
@@ -120,6 +122,785 @@ class Kernel extends ConsoleKernel
                 }
             }
         })->yearly();
+
+        // Trawick Explorer Rates
+        $schedule->call(function(){
+            $product = TrawickProduct::find(11);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 61; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "agent_id" => 14695
+                            ];
+
+                            Log::info($payload);
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            Log::info($response);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            Log::info($percent);
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => null, 'CDW' => null],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(15, '08:55');
+        
+        // Trawick Explorer Plus Rates
+        $schedule->call(function(){
+            $product = TrawickProduct::find(12);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 91; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "agent_id" => 14695
+                            ];
+
+                            Log::info($payload);
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            Log::info($response);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            Log::info($percent);
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => null, 'CDW' => null],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(16, '10:31');
+
+        // Trawick ST Journey Rates
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "agent_id" => 14695
+                            ];
+
+                            Log::info($payload);
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            Log::info($response);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            Log::info($percent);
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => null, 'CDW' => null],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(16, '11:16');
+        
+        // Trawick ST Journey Rates YesNoNo
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 100000,
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => 100000, '24_add' => null, 'CDW' => null],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:46');
+        
+        // Trawick ST Journey Rates NoYesNo
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "24_add" => 25000,
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => 25000, 'CDW' => null],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:48');
+        
+        // Trawick ST Journey Rates NoNoYes
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "CDW" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => null, 'CDW' => "yes"],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:49');
+        
+        // Trawick ST Journey Rates YesYesNo
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 100000,
+                                "24_add" => 25000,
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => 100000, '24_add' => 25000, 'CDW' => null],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:50');
+
+        // Trawick ST Journey Rates YesNoYes
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 100000,
+                                "CDW" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => 100000, '24_add' => null, 'CDW' => "yes"],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:51');
+
+        // Trawick ST Journey Rates NoYesYes
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "24_add" => 25000,
+                                "CDW" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => 25000, 'CDW' => "yes"],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:52');
+
+        // Trawick ST Journey Rates YesYesYes
+        $schedule->call(function(){
+            $product = TrawickProduct::find(13);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 100000,
+                                "24_add" => 25000,
+                                "CDW" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            try{
+                                $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+    
+                                $percent = ($response->json()["TotalPrice"]) / 10000;
+    
+                                TrawickGpr::updateOrCreate(
+                                    ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => 100000, '24_add' => 25000, 'CDW' => "yes"],
+                                    ['percent' => $percent]
+                                );
+                            }catch (\Exception $e){
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '13:53');
+        
+
+        // Trawick ST Voyager Rates
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "agent_id" => 14695
+                            ];
+
+                            Log::info($payload);
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            Log::info($response);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            Log::info($percent);
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => null, '24_add' => null, 'CDW' => null],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(16, '11:33');
+
+        // Trawick ST Voyager Rates YNN
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 250000,
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "yes", '24_add' => "no", 'CDW' => "no"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:25');
+
+        // Trawick ST Voyager Rates NYN
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "24_add" => 25000,
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "no", '24_add' => "yes", 'CDW' => "no"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:27');
+
+        // Trawick ST Voyager Rates NNY
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "cancelForAny" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "no", '24_add' => "no", 'CDW' => "yes"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:29');
+
+        // Trawick ST Voyager Rates YYN
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" =>250000,
+                                "24_add" => 25000,
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "yes", '24_add' => "yes", 'CDW' => "no"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:30');
+
+        // Trawick ST Voyager Rates YNY
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 250000,
+                                "cancelForAny" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "yes", '24_add' => "no", 'CDW' => "yes"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:33');
+
+        // Trawick ST Voyager Rates NYY
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "24_add" => 25000,
+                                "cancelForAny" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "no", '24_add' => "yes", 'CDW' => "yes"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:36');
+
+        // Trawick ST Voyager Rates YYY
+        $schedule->call(function(){
+            $product = TrawickProduct::find(14);
+
+            $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+
+            $countries = Country::find([5, 8, 1, 13, 103, 7, 22, 3, 2, 17, 149, 24, 4, 10, 226, 189]);
+            $states = ['PA', 'RI', 'WY', 'NH'];
+
+            for($day = 1; $day < 181; $day++){
+                foreach($ages as $age){
+                    foreach($countries as $country){
+                        foreach($states as $state){
+                            $payload = [
+                                "product" => $product->product_id,
+                                "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                                "term_date" => Carbon::now()->addDays(10 + $day - 1)->format('m/d/Y'),
+                                "country" => "US",
+                                "home_state" => $state, 
+                                "destination" => $country->iso,
+                                "trip_cost_per_person" => 10000,
+                                "dob1" => Carbon::now()->subYears($age + 1)->format('m/d/Y'),
+                                "flight_add" => 250000,
+                                "24_add" => 25000,
+                                "cancelForAny" => "yes",
+                                "agent_id" => 14695
+                            ];
+
+                            $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                            $percent = ($response->json()["TotalPrice"]) / 10000;
+
+                            TrawickGpr::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'days' => $day, 'destination' => $country->area1, 'state' => $state, 'flight_add' => "yes", '24_add' => "yes", 'CDW' => "yes"],
+                                ['percent' => $percent]
+                            );
+                        }
+                    }
+                }
+            }
+        })->monthlyOn(17, '14:37');
 
         // Travel Insured Rate
         $schedule->call(function (){
