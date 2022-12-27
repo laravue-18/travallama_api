@@ -1069,8 +1069,8 @@ class Kernel extends ConsoleKernel
         
         // IMG Medical Base
         $schedule->call(function (){
-            Log::info('start');
-            $products = ImgProduct::where('type', 'medical')->get();
+            // $products = ImgProduct::where('type', 'medical')->get();
+            $products = ImgProduct::find([17]);
             
             foreach($products as $product){
                 $ages = json_decode($product->ages);
@@ -1079,8 +1079,6 @@ class Kernel extends ConsoleKernel
                 foreach($ages as $age){
                     foreach($deductibles as $deductible){
                         foreach($policyMaxes as $policyMax){
-                            Log::info($product->id.':'.$product->name.':'.$age[1].':'.$deductible.':'.$policyMax);
-
                             $imgToken = Token::where('provider', 'img')->first()->token;
 
                             if($product->country_type == 'inbound'){
@@ -1173,7 +1171,7 @@ class Kernel extends ConsoleKernel
             }
 
             Log::info('end');
-        })->yearly();
+        })->monthlyOn(23, '10:27');
 
         // Geo blue Voyager Rates
         $schedule->call(function (){

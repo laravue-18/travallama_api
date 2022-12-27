@@ -71,8 +71,10 @@ class QuoteController extends Controller
                     return false;
             }else if($item['type'] == 'trip' && $request['country'] == 'USA'){
                 return true;
+            }else if($item['type'] == 'vacation_rental' && $request['country'] == 'USA'){
+                return true;
             }else{
-                return false;
+                return true;
             }
         });
 
@@ -257,13 +259,6 @@ class QuoteController extends Controller
             case 'Trawick':
                 $product = TrawickProduct::find($request['id']);
 
-                $options = Option::where(["provider" => "Trawick", "product_id" => $request['id']])->get();
-                $options = $options->map(function($option){
-                    $option['items'] = json_decode($option['items']);
-                    return $option;
-                } );
-                $product['options'] = $options;
-
                 break;
             case 'Travel Insured':
                 $product = TiProduct::find($request['id']);
@@ -278,6 +273,13 @@ class QuoteController extends Controller
 
                 break;
         }
+
+        $options = Option::where(["provider" => $request['provider'], "product_id" => $request['id']])->get();
+        $options = $options->map(function($option){
+            $option['items'] = json_decode($option['items']);
+            return $option;
+        } );
+        $product['options'] = $options;
 
 
         return response()->json($product);
@@ -354,13 +356,14 @@ class QuoteController extends Controller
                 }else if($product['type'] == 'trip' && $product['rate_type'] == 'trip_b'){
                     $tripCost = max($request['tripCost'], $age > 35 ? 2000 : ($age > 21 ? 1500 : ($age > 8 ? 1000 : 750)));
 
+                    
                     $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
                     $age = max(array_filter($ages, fn ($i) => $age >= $i));
-
+                    
                     $destination = Country::where('iso3', $request['destination'])->first()->area1;
-
+                    
                     $state = in_array($request['state'], ['RI', 'MO', 'AK']) ? 'RI' : (in_array($request['state'], ['PA', 'NH']) ? $request['state'] : 'WY');
-
+                    
                     $row = TrawickGpr::where([
                         'product_id' => $product->id,
                         'age' => $age,
@@ -371,11 +374,13 @@ class QuoteController extends Controller
                         '24_add' => $request['24_add'],
                         'CDW' => $request['CDW']
                     ])->first();
-
+                        
                     if($row){
                         $price = $tripCost * $row->percent;
                     } 
 
+                }else if($product['type'] == 'vacation_rental'){
+                    $price = $request['tripCost'] * 7 / 100;
                 }else if($product['rate_type'] == 'annual'){
                     $rate = TrawickAnnualRate::where('trawick_product_id', $product->id)->first();
                     if($rate) $price = $rate->rate;
@@ -396,6 +401,12 @@ class QuoteController extends Controller
                 ])->first();
 
                 if($row) $price = $row->rate;
+                $price += $request['OC'];
+                $price += $request['OE'];
+                $price += $request['OF'];
+                $price += $request['OQ'];
+                $price += $request['OR'] * $days;
+                $price += $request['OI'];
 
                 break;
             case 'Geo Blue':
@@ -472,6 +483,8 @@ class QuoteController extends Controller
                         ['img_product_id', '=', $product->id],
                         ['age_min', '<=',  $age],
                         ['age_max', '>=',  $age],
+                        ['deductible', '=', $request['deductible']],
+                        ['policy_max', '=', $request['policy_max'] ]
                     ])->first();
                     if($row){
                         if($days > $product->base_days){
@@ -581,12 +594,12 @@ class QuoteController extends Controller
             $variablesArray = [
                 "purchaseRequest" => [
                     "productCode" => $product->code,
-                    "departureDate" => Carbon::createFromDate($request['startDate'])->format('m/d/Y'),
-                    "returnDate" => Carbon::createFromDate($request['endDate'])->format('m/d/Y'),
-                    "depositDate" => Carbon::createFromDate($request['depositDate'])->format('m/d/Y'),
+                    "departureDate" => (new Carbon($request['startDate']))->format('m/d/Y'),
+                    "returnDate" => (new Carbon($request['endDate']))->format('m/d/Y'),
+                    "depositDate" => (new Carbon($request['depositDate']))->format('m/d/Y'),
                     "destinations" => [[ "countryIsoCode" => $request['destination']]],
                     "primaryTraveler" => [
-                        "dateOfBirth" => Carbon::createFromDate($request['travelers'][0]['birthday'])->format('m/d/Y'),
+                        "dateOfBirth" => (new Carbon($request['travelers'][0]['birthday']))->format('m/d/Y'),
                         "tripCost" => (float)$request['travelers'][0]['tripCost'],
                         "firstName" => $request['travelers'][0]['firstName'],
                         "lastName" => $request['travelers'][0]['lastName'],
@@ -605,8 +618,11 @@ class QuoteController extends Controller
                     "additionalTravelers" => [],
                     "optionalCoverages" => [
                         // [
-                        //   "productCoverageCode" => "OF",
-                        //   "productCoverageLimitAmount" => 1000000
+                        //     "productCoverageCode" => "YR"
+                        // ],
+                        // [
+                        //     "productCoverageCode" => "OF",
+                        //     "productCoverageLimitAmount" => 1000000
                         // ]
                     ],
                     "payments" => [[
@@ -768,7 +784,7 @@ class QuoteController extends Controller
 
         $responses = Http::pool(function(Pool $pool) use ($countries, $states){
             $arr = [];
-            $product = TrawickProduct::find(14);
+            $product = TrawickProduct::find(15);
             
             if($product->type == 'trip' && $product->rate_type == 'trip_b'){
                 foreach($states as $state){
