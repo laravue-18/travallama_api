@@ -78,18 +78,18 @@ class QuoteController extends Controller
             }
         });
 
-        $trawickProducts = $trawickProducts->map(function ($item) use($age, $tripCost, $days) {
+        $trawickProducts = $trawickProducts->map(function ($item) use($age, $tripCost, $days, $request) {
             
-            if($item['rate_type'] == 'daily'){
+            if($item['type'] == 'medical'){
                 $daily_rate = TrawickDailyRate::where([
                     ['trawick_product_id', '=', $item->id],
                     ['age_min', '<', $age ],
-                    ['age_max', '>', $age ]
+                    ['age_max', '>', $age ],
                 ])->first()->daily_rate;
 
                 $item['price'] = $daily_rate * $days;
-            }else if($item['rate_type'] == 'trip_cost'){
-                $rate = TrawickTripcostRate::where([
+            }else if($item['type'] == 'trip' && $item['rate_type'] == 'trip_a'){
+                $row = TrawickTripcostRate::where([
                     ['trawick_product_id', '=', $item->id],
                     ['age_min', '<', $age ],
                     ['age_max', '>', $age ],
@@ -97,7 +97,34 @@ class QuoteController extends Controller
                     ['cost_max', '>=', $tripCost]
                 ])->first();
 
-                if($rate) $item['price'] = $rate->rate;
+                if($row) {
+                    $item['price'] = in_array($request['state'], ['AK', 'MO', 'PA']) ? $row->rate1 : $row->rate2;
+                    if($days > 30) $item['price'] += ( 4 * ($days - 30) );
+                }
+            }else if($item['type'] == 'trip' && $item['rate_type'] == 'trip_b'){
+                $tripCost = max($request['tripCost'], $age > 35 ? 2000 : ($age > 21 ? 1500 : ($age > 8 ? 1000 : 750)));
+                
+                $ages = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
+                $age = max(array_filter($ages, fn ($i) => $age >= $i));
+                
+                $destination = Country::where('iso3', $request['destination'])->first()->area1;
+                
+                $state = in_array($request['state'], ['RI', 'MO', 'AK']) ? 'RI' : (in_array($request['state'], ['PA', 'NH']) ? $request['state'] : 'WY');
+                
+                $row = TrawickGpr::where([
+                    'product_id' => $item->id,
+                    'age' => $age,
+                    'days' => $days,
+                    'destination' => $destination,
+                    'state' => $state,
+                ])->first();
+                    
+                if($row){
+                    $item['price'] = $tripCost * $row->percent;
+                } 
+
+            }else if($item['type'] == 'vacation_rental'){
+                $item['price'] = $request['tripCost'] * 7 / 100;
             }else if($item['rate_type'] == 'annual'){
                 $rate = TrawickAnnualRate::where('trawick_product_id', $item->id)->first();
                 if($rate) $item['price'] = $rate->rate;
@@ -160,6 +187,7 @@ class QuoteController extends Controller
                     ['age_max', '>=',  $age],
                     ['trip_cost_min', '=', $tripCost]
                 ])->first();
+
                 if($row){
                     if($days > $item->base_days){
                         if($row){
@@ -242,7 +270,7 @@ class QuoteController extends Controller
 
         $products = $products->concat($imgProducts);
 
-        // $products = $products->filter(fn ($item) => $item['price'] )->values();
+        $products = $products->filter(fn ($item) => $item['price'] )->values();
 
         return response()->json($products);
     }
@@ -498,7 +526,6 @@ class QuoteController extends Controller
                 }
                 break;
         }
-
 
         return response()->json($price);
     }
