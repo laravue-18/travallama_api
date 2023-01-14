@@ -31,6 +31,9 @@ use App\Models\ImgTripBaseRate;
 use App\Models\ImgTripDailyRate;
 use App\Models\ImgMedicalBaseRate;
 
+use App\Models\TravelsafeProduct;
+use App\Models\TravelsafeRate;
+
 use App\Models\Token;
 use App\Models\Order;
 use App\Models\Option;
@@ -269,6 +272,36 @@ class QuoteController extends Controller
         });
 
         $products = $products->concat($imgProducts);
+
+        $travelsafeProducts = TravelSafeProduct::where('status', 1)->get();
+
+        $travelsafeProducts = $travelsafeProducts->map(function ($item) {
+            $item['provider'] = 'Travel Safe';
+            $item['price'] = 0;
+            return $item;
+        });
+
+        $travelsafeProducts = $travelsafeProducts->filter(function ($item, $key) use($request){
+            return $request['country'] == 'USA' ? true : false;
+        });
+
+        $travelsafeProducts = $travelsafeProducts->map(function ($item) use($age, $tripCost, $request) {
+            $ages = json_decode($item->ages);
+            $age = min(array_filter($ages, fn ($i) => $age <= $i));
+
+            $tripCost = 500 * (($tripCost / 500) + (($tripCost % 500) ? 1 : 0));
+
+            $rate = TravelsafeRate::where([
+                'product_id' => $item->id,
+                'age' => $age,
+                'trip_cost' => $tripCost
+            ])->first()->rate;
+
+            $item['price'] = $rate;
+            return $item;
+        });
+        
+        $products = $products->concat($travelsafeProducts);
 
         $products = $products->filter(fn ($item) => $item['price'] )->values();
 
@@ -524,6 +557,21 @@ class QuoteController extends Controller
                         }
                     }
                 }
+                break;
+            case 'Travel Safe':
+                $product = TravelsafeProduct::find($request['id']);
+
+                $ages = json_decode($product->ages);
+                $age = min(array_filter($ages, fn ($i) => $age <= $i));
+
+                $tripCost = 500 * (($tripCost / 500) + (($tripCost % 500) ? 1 : 0));
+
+                $price = TravelsafeRate::where([
+                    'product_id' => $product->id,
+                    'age' => $age,
+                    'trip_cost' => $tripCost
+                ])->first()->rate;
+                
                 break;
         }
 
@@ -811,22 +859,22 @@ class QuoteController extends Controller
 
         $responses = Http::pool(function(Pool $pool) use ($countries, $states){
             $arr = [];
-            $product = TrawickProduct::find(15);
+            $product = TrawickProduct::find(27);
             
-            if($product->type == 'trip' && $product->rate_type == 'trip_b'){
-                foreach($states as $state){
-                // for($i = 0; $i < 100; $i++){
+            if($product->type == 'trip'){
+                // foreach($states as $state){
+                for($i = 0; $i < 20; $i++){
                     array_push($arr, 
                         $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
                             "product" => $product->product_id,
                             "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
-                            "term_date" => Carbon::now()->addDays(10 + 20)->format('m/d/Y'),
+                            "term_date" => Carbon::now()->addDays(10 + 10)->format('m/d/Y'),
                             "dob1" => Carbon::now()->subYears(32)->format('m/d/Y'),
                             "destination" => "NP",
                             "country" => "US",
-                            'trip_cost_per_person' => 10000,
-                            "home_state" => $state->code, 
-                            "agent_id" => 14695
+                            'trip_cost_per_person' => 100 * $i,
+                            "home_state" => "AK", 
+                            "agent_id" => 15074, // 14695, 15074
                         ])
                     );
                 }
@@ -907,6 +955,43 @@ class QuoteController extends Controller
         //     $item['totalPremium'] = $item['totalPremium'] - $baseRate;
         //     return $item;
         // });
+
+        return response()->json($res);
+    }
+
+    public function testTravelsafe(){
+        $countries = Country::all();
+        $states = State::where('country', 'USA')->get();
+
+        $responses = Http::pool(function(Pool $pool) use ($countries, $states){
+            $arr = [];
+            $product = TravelsafeProduct::find(2);
+            
+            // foreach($states as $state){
+            for($i = 1; $i < 31; $i++){
+                array_push($arr, 
+                    $pool->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', [
+                        "product" => $product->code,
+                        "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                        "term_date" => Carbon::now()->addDays(10 + $i)->format('m/d/Y'),
+                        "dob1" => Carbon::now()->subYears(20)->format('m/d/Y'),
+                        "destination" => "NP",
+                        "country" => "US",
+                        'trip_cost_per_person' => 500,
+                        "home_state" => "AK", 
+                        "agent_id" => 15074, // 14695, 15074
+                    ])
+                );
+            }
+           
+            return $arr;
+        });
+
+        $res = collect($responses)->map(function($item, $key) use ($countries, $states){
+            $a['param'] = 500  * ($key + 1) + 1;
+            $a['price'] = $item->json()['TotalPrice'];
+            return $a;
+        } );
 
         return response()->json($res);
     }

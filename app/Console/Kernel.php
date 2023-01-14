@@ -27,6 +27,9 @@ use App\Models\ImgTripDailyRate;
 use App\Models\ImgMedicalBaseRate;
 use App\Models\ImgMedicalDailyRate;
 
+use App\Models\TravelSafeProduct;
+use App\Models\TravelSafeRate;
+
 use Carbon\Carbon;
 
 use GraphQL\Client;
@@ -166,7 +169,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(15, '08:55');
+        })->yearlyOn(5, 15, '08:55');
         
         // Trawick Explorer Plus Rates
         $schedule->call(function(){
@@ -211,7 +214,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(16, '10:31');
+        })->yearlyOn(5, 16, '10:31');
 
         // Trawick ST Journey Rates
         $schedule->call(function(){
@@ -256,7 +259,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(16, '11:16');
+        })->yearlyOn(5, 16, '11:16');
         
         // Trawick ST Journey Rates YesNoNo
         $schedule->call(function(){
@@ -300,7 +303,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:46');
+        })->yearlyOn(5, 17, '13:46');
         
         // Trawick ST Journey Rates NoYesNo
         $schedule->call(function(){
@@ -344,7 +347,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:48');
+        })->yearlyOn(5, 17, '13:48');
         
         // Trawick ST Journey Rates NoNoYes
         $schedule->call(function(){
@@ -388,7 +391,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:49');
+        })->yearlyOn(5, 17, '13:49');
         
         // Trawick ST Journey Rates YesYesNo
         $schedule->call(function(){
@@ -433,7 +436,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:50');
+        })->yearlyOn(5, 17, '13:50');
 
         // Trawick ST Journey Rates YesNoYes
         $schedule->call(function(){
@@ -478,7 +481,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:51');
+        })->yearlyOn(5, 17, '13:51');
 
         // Trawick ST Journey Rates NoYesYes
         $schedule->call(function(){
@@ -523,7 +526,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:52');
+        })->yearlyOn(5, 17, '13:52');
 
         // Trawick ST Journey Rates YesYesYes
         $schedule->call(function(){
@@ -569,8 +572,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '13:53');
-        
+        })->yearlyOn(5, 17, '13:53');
 
         // Trawick ST Voyager Rates
         $schedule->call(function(){
@@ -615,7 +617,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(16, '11:33');
+        })->yearlyOn(5, 16, '11:33');
 
         // Trawick ST Voyager Rates YNN
         $schedule->call(function(){
@@ -655,7 +657,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:25');
+        })->yearlyOn(5, 17, '14:25');
 
         // Trawick ST Voyager Rates NYN
         $schedule->call(function(){
@@ -695,7 +697,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:27');
+        })->yearlyOn(5, 17, '14:27');
 
         // Trawick ST Voyager Rates NNY
         $schedule->call(function(){
@@ -735,7 +737,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:29');
+        })->yearlyOn(5, 17, '14:29');
 
         // Trawick ST Voyager Rates YYN
         $schedule->call(function(){
@@ -776,7 +778,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:30');
+        })->yearlyOn(5, 17, '14:30');
 
         // Trawick ST Voyager Rates YNY
         $schedule->call(function(){
@@ -817,7 +819,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:33');
+        })->yearlyOn(5, 17, '14:33');
 
         // Trawick ST Voyager Rates NYY
         $schedule->call(function(){
@@ -858,7 +860,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:36');
+        })->yearlyOn(5, 17, '14:36');
 
         // Trawick ST Voyager Rates YYY
         $schedule->call(function(){
@@ -900,7 +902,7 @@ class Kernel extends ConsoleKernel
                     }
                 }
             }
-        })->monthlyOn(17, '14:37');
+        })->yearlyOn(5, 17, '14:37');
 
         // Travel Insured Rate
         $schedule->call(function (){
@@ -1171,7 +1173,7 @@ class Kernel extends ConsoleKernel
             }
 
             Log::info('end');
-        })->monthlyOn(23, '10:27');
+        })->yearlyOn(5, 23, '10:27');
 
         // Geo blue Voyager Rates
         $schedule->call(function (){
@@ -1285,6 +1287,89 @@ class Kernel extends ConsoleKernel
             Log::info('*** Geo Blue TripProtector Ended ***');
         })->yearly();
 
+        // Travel Safe Basic
+        $schedule->call(function (){
+            Log::info('*** Travel Safe Basic Started ***');
+
+            $product = TravelSafeProduct::find(1);
+            
+            $ages = json_decode($product->ages);
+
+            foreach($ages as $age){
+                for($i = 1; $i < 21; $i++){
+                    try{
+                        $payload = [
+                            "product" => $product->code,
+                            "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "term_date" => Carbon::now()->addDays(20)->format('m/d/Y'),
+                            "dob1" => Carbon::now()->subYears($age)->format('m/d/Y'),
+                            "destination" => "NP",
+                            "country" => "US",
+                            'trip_cost_per_person' => 500 * $i,
+                            "home_state" => "AK", 
+                            "agent_id" => 15074, // 14695, 15074
+                        ];
+
+                        $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                        $price = $response->json()["TotalPrice"];
+
+                        if($price){
+                            TravelsafeRate::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'trip_cost' => 500 * $i],
+                                ['rate' => $price]
+                            );
+                        }
+                    }catch (\Exception $e){
+                        Log::info($e);
+                    }
+                }
+            }
+
+            Log::info('*** Travel Safe Basic Ended ***');
+        })->yearlyOn(1, 13, '15:00');
+
+        // Travel Safe Classic
+        $schedule->call(function (){
+            Log::info('*** Travel Safe Classic Started ***');
+
+            $product = TravelSafeProduct::find(2);
+            
+            $ages = json_decode($product->ages);
+
+            foreach($ages as $age){
+                for($i = 1; $i < 21; $i++){
+                    try{
+                        $payload = [
+                            "product" => $product->code,
+                            "eff_date" => Carbon::now()->addDays(10)->format('m/d/Y'),
+                            "term_date" => Carbon::now()->addDays(20)->format('m/d/Y'),
+                            "dob1" => Carbon::now()->subYears($age)->format('m/d/Y'),
+                            "destination" => "NP",
+                            "country" => "US",
+                            'trip_cost_per_person' => 500 * $i,
+                            "home_state" => "AK", 
+                            "agent_id" => 15074, // 14695, 15074
+                        ];
+
+                        $response = Http::retry(3, 2000)->asForm()->post('https://api2017.trawickinternational.com/API2016.asmx/ProcessRequest', $payload);
+
+                        $price = $response->json()["TotalPrice"];
+
+                        if($price){
+                            TravelsafeRate::updateOrCreate(
+                                ['product_id' => $product->id, 'age' => $age, 'trip_cost' => 500 * $i],
+                                ['rate' => $price]
+                            );
+                        }
+                    }catch (\Exception $e){
+                        Log::info($e);
+                    }
+                }
+            }
+
+            Log::info('*** Travel Safe Classic Ended ***');
+        })->yearlyOn(1, 13, '15:02');
     }
 
     /**
