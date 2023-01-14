@@ -31,7 +31,7 @@ Route::post('quote', [QuoteController::class, 'index']);
 Route::post('product', [QuoteController::class, 'getProduct']);
 Route::post('price', [QuoteController::class, 'getPrice']);
 Route::post('purchase', [QuoteController::class, 'purchase']);
-Route::post('testQuote', [QuoteController::class, 'testTrawick']);
+Route::post('testQuote', [QuoteController::class, 'testTravelsafe']);
 Route::post('purchaseTravelInsured', [QuoteController::class, 'purchaseTravelInsured']);
 Route::post('purchaseImg', [QuoteController::class, 'purchaseImg']);
 Route::post('purchaseTrawick', [QuoteController::class, 'purchaseTrawick']);
