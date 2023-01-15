@@ -282,7 +282,7 @@ class QuoteController extends Controller
         });
 
         $travelsafeProducts = $travelsafeProducts->filter(function ($item, $key) use($request){
-            return $request['country'] == 'USA' ? true : false;
+            return ( $request['destination'] == 'USA' && $request['destination'] != $request['country'] ) ? true : false;
         });
 
         $travelsafeProducts = $travelsafeProducts->map(function ($item) use($age, $tripCost, $request) {
@@ -585,7 +585,7 @@ class QuoteController extends Controller
         $input['depositDate'] = (new Carbon($input['depositDate']));
         $input['travelers'][0]['birthday'] = (new Carbon($input['travelers'][0]['birthday']));
 
-        if($request['provider'] == "Trawick"){
+        if($request['provider'] == "Trawick" || $request['provider'] == "Travel Safe"){
             $product = TrawickProduct::find($request['id']);
             $country = Country::where('iso3', $request['country'])->first()->iso;
             $destination = Country::where('iso3', $request['destination'])->first()->iso;
