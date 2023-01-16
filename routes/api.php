@@ -8,7 +8,7 @@ use App\Http\Controllers\StateController;
 use App\Http\Controllers\CountryController;
 use App\Http\Controllers\ImgProductController;
 use App\Http\Controllers\TrawickProductController;
-
+use App\Http\Controllers\ProviderController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -37,6 +37,8 @@ Route::post('purchaseImg', [QuoteController::class, 'purchaseImg']);
 Route::post('purchaseTrawick', [QuoteController::class, 'purchaseTrawick']);
 Route::get('states', [StateController::class, 'index']);
 Route::get('countries', [CountryController::class, 'index']);
+Route::get('providers', [ProviderController::class, 'index']);
+Route::post('providers/{provider}/toggleStatus', [ProviderController::class, 'toggleStatus']);
 Route::post('quote-travel-insured', [QuoteController::class, 'quoteTravelInsured']);
 Route::post('purchase-travel-insured', [QuoteController::class, 'purchaseTravelInsured']);
 Route::post('quote-img', [ImgController::class, 'quote']);
