@@ -39,6 +39,8 @@ Route::get('states', [StateController::class, 'index']);
 Route::get('countries', [CountryController::class, 'index']);
 Route::get('providers', [ProviderController::class, 'index']);
 Route::post('providers/{provider}/toggleStatus', [ProviderController::class, 'toggleStatus']);
+Route::get('providers/{provider}/products', [ProviderController::class, 'products']);
+Route::post('providers/{provider}/products/{id}/toggleStatus', [ProviderController::class, 'toggleProductStatus']);
 Route::post('quote-travel-insured', [QuoteController::class, 'quoteTravelInsured']);
 Route::post('purchase-travel-insured', [QuoteController::class, 'purchaseTravelInsured']);
 Route::post('quote-img', [ImgController::class, 'quote']);

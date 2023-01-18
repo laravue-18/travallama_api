@@ -8,4 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 class TrawickProduct extends Model
 {
     use HasFactory;
+
+    protected $guarded=[];
 }

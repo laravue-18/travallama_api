@@ -8,4 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 class TravelsafeProduct extends Model
 {
     use HasFactory;
+
+    protected $guarded=[];
 }
