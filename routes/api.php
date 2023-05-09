@@ -9,6 +9,7 @@ use App\Http\Controllers\CountryController;
 use App\Http\Controllers\ImgProductController;
 use App\Http\Controllers\TrawickProductController;
 use App\Http\Controllers\ProviderController;
+use App\Http\Controllers\MessageController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -26,6 +27,8 @@ Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
 Route::middleware(['auth:sanctum'])->get('/admin/user', function (Request $request) {
     return $request->user();
 });
+
+Route::post('/message', [MessageController::class, 'broadcast']);
 
 Route::post('quote', [QuoteController::class, 'index']);
 Route::post('product', [QuoteController::class, 'getProduct']);
